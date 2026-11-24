@@ -29,6 +29,24 @@ MATLAB을 사용해 영상 입력, 신호 처리, FFT와 그래프 출력을 연
 5. FFT를 적용해 같은 대역에서 가장 강한 피크 주파수를 찾는다. BPM은 해당 주파수에 60을 곱해 계산한다.
 6. 같은 시간 구간의 스마트워치 BPM과 비교하고 성공 여부와 오차를 기록한다.
 
+### 3.1 피부 영역 추적 구현안
+
+과제 안내 4쪽의 요구에 따라, 프레임이 바뀌어도 동일 인물의 이마와 양쪽 볼에서 RGB 신호를 추출한다.
+
+1. **초기 얼굴 검출** — 첫 프레임에서 `vision.CascadeObjectDetector`로 정면 얼굴을 찾는다. 얼굴 박스 안에 이마와 양쪽 볼의 측정 영역(ROI)을 잡는다.
+2. **프레임 간 추적** — `vision.PointTracker`의 KLT 기능으로 얼굴 특징점 여러 개를 따라간다. 이전 프레임과 현재 프레임의 특징점을 비교해 얼굴의 이동·회전·크기 변화를 구하고, 같은 변환을 세 ROI의 꼭짓점에 적용한다.
+3. **RGB 추출 및 실패 처리** — 갱신된 ROI에서 프레임별 RGB 평균을 구한다. `extract_rgb.m`에서 프레임 시각(`time_s`), 영역 좌표(`roi_positions`), 유효 여부(`valid`)를 함께 기록한다. 추적점이 부족하면 얼굴을 다시 검출하고, 추적을 놓친 프레임은 유효하지 않다고 표시한다. A~D는 같은 ROI와 유효 구간을 사용한다.
+
+**선정 근거**
+
+정면을 보는 한 사람을 촬영하므로 MATLAB의 기본 얼굴 검출기로 시작할 수 있다. 얼굴이 조금 움직일 때 고정된 영역을 쓰거나, 프레임마다 다시 잡은 얼굴 박스가 흔들리면 눈썹이나 머리카락이 섞여 RGB 평균이 달라질 수 있다. KLT는 얼굴 특징점의 위치 변화를 이용해 같은 피부 부위를 계속 따라가기 위해 선택했다.
+
+**검증 계획**
+
+Computer Vision Toolbox를 사용한다. 먼저 1 m 영상에서 ROI 테두리를 영상 위에 표시해 고개를 조금 움직여도 이마와 양쪽 볼에 머무는지 확인한다. 이후 거리별 영상에서 추적 실패를 기록하고, 공통 분석 구간을 확보하지 못한 영상은 추정 실패로 집계한다.
+
+- [MathWorks 얼굴 검출 함수](https://www.mathworks.com/help/vision/ref/vision.cascadeobjectdetector-system-object.html)
+- [MathWorks KLT 얼굴 추적 예제](https://www.mathworks.com/help/vision/ug/face-detection-and-tracking-using-the-klt-algorithm.html)
 ## 4. 비교할 처리 방법
 
 | 방법 | 초기 구현안 | 검증 목적 |
