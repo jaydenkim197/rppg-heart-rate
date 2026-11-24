@@ -1,3 +1,18 @@
-# Configuration
+# 공통 설정과 실험 기록
 
-Record agreed filter settings, FPS and evaluation protocol here before experiments.
+MATLAB의 공통 설정은 `matlab/config.m`에서 관리한다. 실제 영상의 프레임 시각을 분석에 사용하고, 설정의 FPS와 촬영 길이는 권장 촬영 조건으로 사용한다.
+
+`experiments_template.csv`는 빈 기록 양식이다. `main`을 처음 실행하면 `data/experiments.csv`로 복사한다. 이 로컬 파일에 촬영 조건과 같은 시간 구간의 스마트워치 평균 BPM을 기록한다. 기존 파일이 있으면 재사용한다.
+
+| 열 | 의미 |
+|---|---|
+| video_id | 영상의 고유 번호 |
+| subject_id | 이름 대신 사용하는 참가자 코드 |
+| distance_m | 촬영 거리 |
+| trial | 반복 번호 |
+| video_file | 영상 파일 경로 |
+| start_s, end_s | 영상에서 평가할 구간 |
+| gt_bpm | 그 구간과 정렬된 스마트워치 평균 BPM |
+| notes | 촬영 조건과 시간 정렬 관련 메모 |
+
+스마트워치 원시 기록과 시간 정렬 과정은 로컬 실험 자료에 함께 보관한다. 평가 구간, 품질 판정 기준, 결측치 처리와 필터 설정은 평가 전에 정하고 모든 방법에 같은 기준을 적용한다.
