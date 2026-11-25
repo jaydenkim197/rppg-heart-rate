@@ -67,9 +67,29 @@ ProPOS, DistancePPG, POS 원 논문 및 Dynamic ROI 논문의 원저자 GitHub�
 
 ## 4. 강의 연결 및 구현 원칙
 
-- 10-1: sampling, aliasing, DFT/FFT 및 power spectrum. 10-2: convolution, zero padding, wraparound. 11-1: Ideal/Butterworth/Gaussian LPF/HPF 전달함수. 시간 신호에는 1D FFT를 사용하고 공간 필터와 구분한다.
-- 11-1 강의의 Butterworth 응답은 1/(1+(D/D0)^(2n)) 형태이다. 일반 IIR Butterworth 진폭응답과 동일하지 않다. HPF=1-LPF 및 양쪽 대역 경계를 사용한 BPF는 후보이며 차수·패딩·윈도우는 아직 미확정이다.
-- 12-1: 열화 및 잡음 모델은 실패 분석에 참고하되 역필터나 Wiener 필터를 근거 없이 도입하지 않는다. 12-2 CT 복원은 직접 적용 필요성이 낮다.
+### 4.1 rPPG에 연결할 MATLAB 기능
+
+쪽수는 로컬 강의 PDF의 페이지 기준이다. MATLAB 함수는 강의 개념을 기존 rPPG 구조에 적용할 후보이며 아래 표에서 위치를 제시한다.
+
+| 적용 단계 | 강의·실습 근거 | 이 프로젝트에서 활용할 방법 |
+|---|---|---|
+| ROI RGB 추출 | 2 `Fundamentals` 31–34쪽의 픽셀 배열, `MATLAB_tutorial` 11–15쪽의 인덱싱·배열 연산 | `extract_rgb.m`에서 `VideoReader`와 `readFrame`으로 RGB 프레임을 읽고, 초기 수동 ROI는 `drawrectangle`로 지정한다. 배열 인덱싱과 `mean`으로 채널별 평균을 계산하고 ROI별 유효 픽셀 수를 함께 보관한다. 거리별 픽셀 수는 원본 해상도를 기준으로 기록한다. |
+| 시간축과 BPM | 2-2 `Fundamentals` 3–16쪽의 보간, 10-1 `Filtering in freq domain` 5–15쪽의 표본화·앨리어싱·1차원 DFT. 11/04 실습은 공간 다운샘플링 전에 Gaussian 저역통과를 적용했다. | `estimate_hr.m`에서 영상의 프레임 시각과 간격을 확인한다. 프레임 시각이 불균일하고 표본 간 공백이 짧을 때는 `interp1(t, x, tUniform, 'linear')`를 검토한다. 긴 결측을 보간하는 기준은 별도로 정한다. 분석 신호에는 1차원 `fft`를 적용하고, 균일 샘플링 주파수 `Fs`와 FFT 길이 `N`에서 `k*Fs/N`으로 Hz 축을 만든다. 0.7–3.0 Hz 구간의 최대 피크 주파수에 60을 곱한다. |
+| 시간 대역통과 | 10-2 `Filtering in freq domain` 7–8·14쪽의 주파수 응답 곱과 순환 경계, 11-1 `Filtering in freq` 6–22쪽의 이상적·Butterworth·Gaussian 응답 비교, 11/11의 2차원 FFT 실습 | 현재 PC에서 `bandpass`를 찾을 수 없으므로 `estimate_hr.m`의 후보로 기본 MATLAB의 `fft → 양·음 주파수에 대칭인 대역 응답 곱 → ifft`를 검토한다. 11-1의 영상용 Butterworth 응답과 시간 영역 IIR Butterworth의 전달함수는 구분한다. 급격한 절단의 링잉과 시작·끝의 경계 영향을 인공 신호로 확인한 후 응답, 패딩 및 윈도우를 결정한다. |
+| B 공간 잡음 억제 | 6-1 `Spatial filter` 29–42쪽의 평균 필터, 패딩, 순위통계 필터와 미디언 실습 | `extract_rgb.m`에서 프레임의 R·G·B에 각각 `medfilt2(channel, [3 3], 'symmetric')`를 적용한 뒤 공통 ROI의 픽셀을 평균하는 방식을 우선 검토한다. 전체 채널을 필터링하고 ROI를 자를 때와 ROI를 먼저 자르고 패딩할 때의 경계 결과가 달라질 수 있으므로 처리 범위를 고정한다. `imfilter`의 평균 필터와 `imgaussfilt`는 예비 비교 후보로 둔다. |
+| C 밝기 변동과 신호 보존 | 4-1·4-2의 밝기·대비 변환, 5-1 `Histogram matching` 22·24–31쪽의 히스토그램 매칭·국소 통계 | `apply_method.m`에서는 팀이 정한 `G/(R+G+B)`를 유지한다. `imhist`로 원본 ROI의 밝기 분포를 확인한다. 프레임별 `histeq`·`imhistmatch`·감마 보정은 시간에 따른 RGB 변화를 바꿀 수 있으므로 필수 경로에서 보류한다. |
+| 거리 실험의 실패 분석 | 2 `Fundamentals` 31–34쪽의 공간 해상도, 12-1 `Image restoration`의 열화·잡음 모델 | 거리별로 ROI가 작아지는 정도와 유효 픽셀 수, 영상의 흐림·잡음을 기록한다. `imresize`로 표시 크기를 키워도 새 피부 샘플을 얻지는 못한다. 샤프닝, 역필터·Wiener 복원, CT 재구성은 필수 파이프라인에서 보류한다. |
+
+`VideoReader.CurrentTime`은 읽을 프레임의 시각을 초 단위로 제공한다. 가변 프레임률 영상에서 `FrameRate`는 평균이므로 고정 30 fps로 시간축을 만들기 전에 `CurrentTime` 차이와 실제 촬영 파일의 읽기 결과를 확인한다. [VideoReader](https://www.mathworks.com/help/matlab/ref/videoreader.html) · [interp1](https://www.mathworks.com/help/matlab/ref/interp1.html) · [fft](https://www.mathworks.com/help/matlab/ref/fft.html)
+
+### 4.2 로컬 MATLAB 점검
+
+- 2026-11-25, MATLAB R2026b에서 인공 입력으로 확인했다. `medfilt2`는 값 100의 5×5 배열에서 값 255인 중앙 픽셀을 100으로 복원했다. 모서리는 대칭 패딩에서 100, 기본 0 패딩에서 0이었다. 비균일한 시각 예제에서 `interp1`의 선형 보간값이 예상과 일치했다. [medfilt2](https://www.mathworks.com/help/images/ref/medfilt2.html)
+- 30 Hz로 만든 60초 인공 신호에 1.25 Hz와 5 Hz를 섞고, `fft`의 대역 내 피크에서 75.0 BPM을 계산했다. 확인 범위는 주파수 축과 피크 선택이며, 대역통과 필터와 실제 영상 파이프라인은 미검증이다.
+- 기본 MATLAB의 `VideoReader`와 Image Processing Toolbox의 `drawrectangle`은 함수 경로를 확인했다. Signal Processing Toolbox의 `bandpass`와 Computer Vision Toolbox의 `vision.PointTracker`는 현재 MATLAB 경로에서 찾을 수 없었다. 추적과 Method D의 세부 구현에는 기존 MathWorks KLT 예제와 POS 원 논문을 이어서 참고한다. [bandpass](https://www.mathworks.com/help/signal/ref/bandpass.html) · [KLT 예제](https://www.mathworks.com/help/vision/ug/face-detection-and-tracking-using-the-klt-algorithm.html)
+
+### 4.3 실험 적용 원칙
+
 - ROI별 품질 가중 결합은 이미 선행연구에 존재한다. 팀 개선은 기존 POS 대비 세 ROI 결합 방식 및 거리별 평가로 정의하고 원천 기술이라고 주장하지 않는다.
 - 품질 점수는 주기 잡음에도 높을 수 있다. 기준 심박으로 피크를 고르지 않는다. 신호/스펙트럼/BPM 결합의 차이를 예비 실험에서 검토한다.
 - 예비 실험에서만 필터, 품질 임계값 등을 결정하고 본 실험 전에 고정한다. 코드의 구현 완료와 실제 검증을 구분한다.
