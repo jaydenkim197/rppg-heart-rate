@@ -1,0 +1,2 @@
+video_id,subject_id,distance_m,trial,video_file,start_s,end_s,gt_bpm,notes
+S01_D1_R1,S01,1,1,test.mp4,0,60,,
