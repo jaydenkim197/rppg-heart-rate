@@ -57,6 +57,11 @@ capacity = max(1, ceil(diff(interval) * video.FrameRate));
 time_s = zeros(capacity, 1);
 raw_rgb = NaN(capacity, 3, 3);
 measurement_rgb = raw_rgb;
+use_filtered = ~strcmp(settings.spatial_filter, 'none');
+filtered_rgb = [];
+if use_filtered
+    filtered_rgb = raw_rgb;
+end
 pixel_counts = zeros(capacity, 3);
 roi_positions = NaN(capacity, 4, 3);
 roi_valid = false(capacity, 3);
@@ -99,7 +104,13 @@ while stamp < interval(2)
                 tracker.misses = tracker.misses + 1;
             end
         end
+        if use_filtered
+            filtered_rgb(count, :, :) = NaN;
+        end
         if observed
+            if use_filtered
+                filtered_frame = filter_frame(frame, settings);
+            end
             for region = 1:3
                 left = max(1, rects(region, 1) + shift(1));
                 top = max(1, rects(region, 2) + shift(2));
@@ -113,8 +124,15 @@ while stamp < interval(2)
                 clipped = any(pixels == 0 | pixels == white, 2);
                 raw_rgb(count, :, region) = mean(pixels, 1);
                 saturation_fraction(count, region) = mean(clipped);
+                accepted = true(size(clipped));
                 if strcmp(saturation_mode, 'hard')
-                    pixels = pixels(~clipped, :);
+                    accepted = ~clipped;
+                end
+                pixels = pixels(accepted, :);
+                if use_filtered
+                    patch = filtered_frame(top:y_end, left:x_end, :);
+                    filtered_pixels = reshape(double(patch), [], 3);
+                    filtered_rgb(count, :, region) = mean(filtered_pixels(accepted, :), 1);
                 end
                 measurement_rgb(count, :, region) = mean(pixels, 1);
                 pixel_counts(count, region) = size(pixels, 1);
@@ -137,8 +155,15 @@ if count == 0
 end
 
 rows = 1:count;
+if use_filtered
+    filtered_rgb = filtered_rgb(rows, :, :);
+end
+median_rgb = [];
+if strcmp(settings.spatial_filter, 'median')
+    median_rgb = filtered_rgb;
+end
 rgb_data = struct('time_s', time_s(rows), 'raw_rgb', raw_rgb(rows, :, :), ...
-    'measurement_rgb', measurement_rgb(rows, :, :), 'median_rgb', [], ...
+    'measurement_rgb', measurement_rgb(rows, :, :), 'median_rgb', median_rgb, 'filtered_rgb', filtered_rgb, ...
     'pixel_counts', pixel_counts(rows, :), 'roi_positions', roi_positions(rows, :, :), ...
     'valid', any(roi_valid(rows, :), 2), 'roi_valid', roi_valid(rows, :), ...
     'saturation_fraction', saturation_fraction(rows, :), ...
@@ -177,4 +202,27 @@ correlation(~isfinite(correlation)) = -Inf;
 [confidence, index] = max(correlation(:));
 [y, x] = ind2sub(size(correlation), index);
 shift = lower + [x-1, y-1] - tracker.origin;
+end
+
+function filtered = filter_frame(frame, settings)
+filtered = zeros(size(frame), 'like', frame);
+kernel = settings.median_filter_size;
+for channel = 1:3
+    plane = frame(:, :, channel);
+    switch char(settings.spatial_filter)
+        case 'median'
+            filtered(:, :, channel) = medfilt2(plane, kernel, 'symmetric');
+        case 'mean'
+            filtered(:, :, channel) = imfilter(plane, ones(kernel)/prod(kernel), 'symmetric');
+        case 'gaussian'
+            filtered(:, :, channel) = imgaussfilt(plane, settings.spatial_sigma_px, ...
+                'FilterSize', kernel, 'Padding', 'symmetric');
+        case 'bilateral'
+            filtered(:, :, channel) = imbilatfilt(plane);
+        case 'wiener'
+            filtered(:, :, channel) = wiener2(plane, kernel);
+        otherwise
+            error('rppg:UnknownSpatialFilter', 'Unsupported spatial filter.');
+    end
+end
 end

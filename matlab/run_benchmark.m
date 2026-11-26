@@ -42,25 +42,38 @@ end
 if isempty(candidates) || numel(unique(string({candidates.name}))) ~= numel(candidates)
     error('rppg:InvalidCandidates', 'Nonempty unique candidate names are required.');
 end
-if split ~= "development" && numel(candidates) ~= 1
-    error('rppg:HoldoutSweep', 'Only one frozen candidate can be evaluated on holdouts.');
-end
-
 base = config();
+methods = repmat("A", numel(candidates), 1);
+if isfield(candidates, 'method')
+    methods = string({candidates.method})';
+end
+if any(~ismember(methods, ["A", "B", "C", "D", "POS"]))
+    error('rppg:UnknownMethod', 'Expected A, B, C, D, or POS.');
+end
+if split ~= "development" && numel(unique(methods)) ~= numel(methods)
+    error('rppg:HoldoutSweep', 'Holdouts accept one frozen candidate per method.');
+end
 candidate_settings = repmat(base, numel(candidates), 1);
 allowed = {'bandpass_variant', 'bandpass_order', 'fft_window', 'fft_padding_factor', 'peak_method', ...
-    'roi_tracker', 'ncc_min_corr', 'saturation_mode'};
+    'roi_tracker', 'ncc_min_corr', 'saturation_mode', 'spatial_filter', ...
+    'median_filter_size', 'spatial_sigma_px', 'color_variant', 'color_window_s', ...
+    'pos_window_s', 'pos_min_sqi', 'pos_fusion', 'consensus_tolerance_bpm'};
 for index = 1:numel(candidates)
     overrides = candidates(index).overrides;
     names = fieldnames(overrides);
+    if methods(index) == 'B'
+        candidate_settings(index).spatial_filter = 'median';
+    end
     if any(~ismember(names, allowed))
         error('rppg:InvalidCandidateSetting', 'Unsupported benchmark override.');
     end
     for field = 1:numel(names)
         candidate_settings(index).(names{field}) = overrides.(names{field});
     end
-    if split ~= "development" && strcmp(candidate_settings(index).bandpass_variant, 'none')
-        error('rppg:ResearchControlOnHoldout', 'The no-filter research control belongs to development.');
+    no_time_filter = strcmp(candidate_settings(index).bandpass_variant, 'none');
+    no_spatial_filter = methods(index) == "B" && strcmp(candidate_settings(index).spatial_filter, 'none');
+    if split ~= "development" && (no_time_filter || no_spatial_filter)
+        error('rppg:ResearchControlOnHoldout', 'Unfiltered research controls belong to development.');
     end
 end
 
@@ -70,10 +83,11 @@ for trial_index = 1:height(requested)
     interval = [trial.start_s, trial.end_s];
     previous_extraction = "";
     for index = 1:numel(candidates)
-        method = "A";
+        method = methods(index);
         settings = candidate_settings(index);
         extraction = string(jsonencode({settings.roi_tracker, settings.ncc_min_corr, ...
-            settings.saturation_mode}));
+            settings.saturation_mode, settings.spatial_filter, ...
+            settings.median_filter_size, settings.spatial_sigma_px}));
         if extraction ~= previous_extraction
             settings.roi_boxes_px = trial.roi_boxes{1};
             settings.analysis_interval_s = interval;
@@ -81,7 +95,6 @@ for trial_index = 1:height(requested)
             roi_coverage = NaN;
             try
                 rgb = extract_rgb(string(trial.video_file(1)), settings);
-                signal = apply_method(rgb, 'A', settings);
                 roi_coverage = 100 * mean(rgb.roi_valid, 'all');
             catch problem
                 failure = string(problem.identifier);
@@ -93,8 +106,11 @@ for trial_index = 1:height(requested)
         end
         if strcmp(settings.bandpass_variant, 'none')
             method = "ResearchNoBandpass";
+        elseif method == "B" && strcmp(settings.spatial_filter, 'none')
+            method = "ResearchNoSpatial";
         end
         if strlength(failure) == 0
+            signal = apply_method(rgb, methods(index), settings);
             estimate = estimate_hr(signal, settings);
         else
             estimate = struct('predicted_bpm', NaN, 'status', 'failed', ...
@@ -118,6 +134,8 @@ if nargin >= 4 && strlength(string(output_dir)) > 0
     end
     writetable(report.predictions, fullfile(output_dir, 'predictions.csv'));
     writetable(report.metrics, fullfile(output_dir, 'metrics.csv'));
+    writelines(string(jsonencode(table2struct(requested), 'PrettyPrint', true)), ...
+        fullfile(output_dir, 'trials.json'));
     record = struct('split', split, 'candidates', candidates, 'effective_settings', candidate_settings);
     writelines(string(jsonencode(record, 'PrettyPrint', true)), fullfile(output_dir, 'settings.json'));
 end

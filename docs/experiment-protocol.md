@@ -6,14 +6,14 @@
 
 | 순서 | 확인할 것 | 현장에서 사용할 기준 |
 |---|---|---|
-| 1. 기본 설정 | iPhone 16 Pro 후면 1×, Blackmagic Camera, 삼각대, 4K·60 fps 및 1/60초 우선. ISO·WB는 적정 노출에서 고정하고 거리별로 초점을 조정한 뒤 잠근다. 기존 실내조명을 유지한다. | 얼굴 ROI가 과다 노출·과도한 암부에 묻히지 않고 초점과 프레임이 유지되는지 예비 영상에서 확인한다. 설정과 조명 상태를 기록한다. |
+| 1. 기본 설정 | iPhone 16 Pro 후면 1×, Blackmagic Camera, 삼각대, 4K·60 fps 및 1/60초 우선. ISO·WB는 적정 노출에서 고정하고 거리별로 초점을 조정한 뒤 잠근다. 기존 실내조명을 유지하고 Off Speed Recording을 끈다. | 얼굴 ROI가 과다 노출·과도한 암부에 묻히지 않고 초점과 프레임이 유지되는지 예비 영상에서 확인한다. 설정과 조명 상태를 기록한다. |
 | 2. 코덱·SSD | ProRes 422 HQ, ProRes 422, 고비트레이트 H.264 순으로 실제로 지원되는 후보를 확인한다. 같은 설정으로 5~10초 파일을 만든다. 긴 회복 영상을 찍기 전 저장 공간과 연속 기록도 확인한다. | Windows MATLAB `VideoReader`로 파일을 열고 초반·중간·끝을 디코딩한다. 해상도, 타임스탬프, 프레임 누락과 기록 중단을 확인한다. 예비 장비 검사에서 실패하면 확인된 코덱·프레임률을 선택해 조건과 사유를 남긴다. |
 | 3. 연속 기준 신호 | MAX30102+ESP32에서 Red·IR 원본, 단조 시각, 샘플 번호를 수집한다. 100 Hz는 초기 설정이다. 샘플 취득 시각과 PC 수신 시각을 구분한다. | 예비 기록에서 유효한 연속 맥파와 샘플 간격을 확인하고 FIFO 누락 및 포화·평탄·결측 구간을 기록한다. Apple Watch와 같은 창의 BPM을 교차 확인한다. |
 | 4. 시간 동기화 | ESP32가 시작·종료 LED 이벤트와 내부 시각을 함께 기록한다. 카메라에서 LED를 볼 수 있게 두고 점등은 얼굴 측정 구간 밖에서 한다. | 영상과 ESP32 양쪽에서 같은 두 이벤트를 식별할 수 있어야 한다. 두 앵커 사이의 시간 차이와 드리프트를 기록한다. 워치는 공통 UTC 시각으로 정렬하고 기록 주기·갱신 지연을 남긴다. |
 | 5. 스마트워치 | 피험자별 Apple Watch 심박 기록과 측정 UTC 시각을 내보낼 수 있는지 확인한다. 영상과 같은 평가 구간에 해당하는 값을 보관한다. | 60초 구간의 기준 BPM을 재현할 수 있는지 확인한다. 기준값이 누락되면 해당 원인과 시도를 남긴다. 초 단위 변화를 평가할 때는 시간 해상도가 확인된 연속 기준 PPG를 사용한다. |
 | 6. 짧은 파일 열기 | 예비 파일의 처음·중간·끝 프레임을 디코딩하고 분석 시간과 두 LED 이벤트가 파일에 들어 있는지 확인한다. | 프레임 시각은 `readFrame` 직전의 `CurrentTime`을 기록하고 증가 여부·간격을 확인한다. `FrameRate`와 실제 프레임 간격을 함께 기록한다. |
 
-코덱과 SSD는 실제 파일 쓰기·읽기로 판정한다. 장비가 다른 조합으로 바뀌면 변경 시점과 시도를 기록하고 거리 효과 해석에서 구분한다. [Blackmagic Camera 사양](https://www.blackmagicdesign.com/products/blackmagiccamera/techspecs) · [MATLAB 동영상 지원 형식](https://www.mathworks.com/help/matlab/import_export/supported-video-and-audio-file-formats.html) · [VideoReader](https://www.mathworks.com/help/matlab/ref/videoreader.html) · [MAX30102 데이터시트](https://www.analog.com/media/en/technical-documentation/data-sheets/max30102.pdf)
+코덱과 SSD는 실제 파일 쓰기·읽기로 판정한다. 장비가 다른 조합으로 바뀌면 변경 시점과 시도를 기록하고 거리 효과 해석에서 구분한다. [Blackmagic Camera 사양](https://www.blackmagicdesign.com/products/blackmagiccamera/techspecs) · [VideoReader](https://www.mathworks.com/help/matlab/ref/videoreader.html) · [MAX30102 데이터시트](https://www.analog.com/media/en/technical-documentation/data-sheets/max30102.pdf)
 
 기준 센서나 트리거 문제가 해결되기 전에 촬영해야 한다면 해당 시도를 그대로 보관한다. 동일 구간의 스마트워치 기준이 확보된 영상은 과제 절대 BPM 비교에 사용할 수 있다. 시간 정렬이 확인되지 않은 시도는 연속 변화량·반응 지연의 기준 자료에서 제외하고 사유를 남긴다.
 

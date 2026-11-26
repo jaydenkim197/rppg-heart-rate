@@ -1,4 +1,76 @@
 function result = estimate_hr(method_signal, settings)
+%ESTIMATE_HR Estimate a single signal or fuse independently estimated POS ROIs.
+
+if ~strcmp(method_signal.method, 'D')
+    result = estimate_channel(method_signal, settings);
+    return
+end
+channel = method_signal;
+for index = size(method_signal.values, 2):-1:1
+    channel.values = method_signal.values(:, index);
+    regions(index) = estimate_channel(channel, settings); %#ok<AGROW>
+end
+bpm = [regions.predicted_bpm];
+quality = [regions.quality];
+usable = find(string({regions.status}) == "ok" & isfinite(quality) ...
+    & quality >= settings.pos_min_sqi & quality > 0);
+result = regions(1);
+result.region_bpm = bpm;
+result.region_quality = quality;
+result.usable_regions = usable;
+result.display_region = '';
+if isempty(usable)
+    result.status = 'failed';
+    result.failure_reason = 'no_usable_pos_roi';
+    result.predicted_bpm = NaN;
+    result.quality = NaN;
+    return
+end
+
+[~, order] = sort(quality(usable), 'descend');
+usable = usable(order);
+if strcmp(settings.pos_fusion, 'best')
+    usable = usable(1);
+elseif strcmp(settings.pos_fusion, 'consensus')
+    neighbor = abs(bpm(usable)' - bpm(usable)) <= settings.consensus_tolerance_bpm;
+    [~, center] = max(sum(neighbor, 2));
+    usable = usable(neighbor(center, :));
+end
+weights = quality(usable);
+if strcmp(settings.pos_fusion, 'equal')
+    weights = ones(size(weights));
+end
+weights = weights / sum(weights);
+result = regions(usable(1));
+switch char(settings.pos_fusion)
+    case {'weighted', 'equal', 'best', 'consensus'}
+        result.predicted_bpm = sum(weights .* bpm(usable));
+        result.peak_hz = result.predicted_bpm / 60;
+        result.display_region = method_signal.labels{usable(1)};
+    case 'spectral'
+        band = settings.heart_band_hz;
+        bins = find(result.frequency_hz >= band(1) & result.frequency_hz <= band(2));
+        combined = zeros(size(result.power));
+        for index = 1:numel(usable)
+            spectrum = regions(usable(index)).power;
+            combined = combined + weights(index)*spectrum / sum(spectrum(bins));
+        end
+        [~, peak] = max(combined(bins));
+        result.power = combined;
+        result.peak_hz = result.frequency_hz(bins(peak));
+        result.predicted_bpm = 60 * result.peak_hz;
+        result.filtered = [];
+        result.display_region = 'combined_spectrum';
+    otherwise
+        error('rppg:UnknownPosFusion', 'Unsupported POS fusion method.');
+end
+result.quality = sum(weights .* quality(usable));
+result.region_bpm = bpm;
+result.region_quality = quality;
+result.usable_regions = usable;
+end
+
+function result = estimate_channel(method_signal, settings)
 %ESTIMATE_HR Analyze one observed time window with a symmetric FFT bandpass.
 % The Butterworth-shaped frequency response follows the team prototype.
 % It is an offline response applied to the provided window.

@@ -4,7 +4,7 @@
 
 ## 실행
 
-MATLAB의 Current Folder를 저장소의 `matlab` 폴더로 지정한다. `main`은 함수 환경과 실험 CSV를 준비하고, 영상 경로를 인자로 주면 Method A를 실행한다.
+MATLAB의 Current Folder를 저장소의 `matlab` 폴더로 지정한다. `main`은 함수 환경과 실험 CSV를 준비하고, 영상 경로를 인자로 주면 기본 Method A를 실행한다.
 
 ```matlab
 main
@@ -15,7 +15,7 @@ selftest_rppg
 
 대화형 실행은 첫 프레임에서 이마, 왼쪽 볼, 오른쪽 볼의 고정 ROI 세 곳을 선택한다. 좌표를 직접 넘기려면 `main(videoFile, roiBoxes, [startSeconds, endSeconds])`를 사용한다. `roiBoxes`는 영상의 1기반 정수 좌표 3행 `[x, y, 너비, 높이]`다. 분석 구간 생략 시 처음 최대 60초를 사용한다. 실패 원인은 `trial.estimate.failure_reason`에 기록된다. 주파수 응답, ROI별 원시 RGB 및 시각은 결과 구조체에서 확인한다.
 
-현재 합성 신호와 합성 AVI로 Method A를 검증했다. 고정 ROI는 안정 영상의 기준이며 최종 과제는 동일 피부 영역 추적과 방법별 비교를 요구한다. 진행 단계와 확인된 한계는 [개발 계획](docs/development-plan.md)에 기록한다.
+네 번째 인자로 `"B"`, `"C"`, `"D"`, `"POS"`를 주면 해당 초기 후보를 실행한다. `run_benchmark`는 같은 영상에 후보를 적용하고 평가 파일을 만든다. 후보 형식과 검증 범위는 개발 계획을 참고한다. 고정 ROI는 안정 영상의 기준이며 최종 과제는 동일 피부 영역 추적과 방법별 비교를 요구한다. 진행 단계와 확인된 한계는 [개발 계획](docs/development-plan.md)에 기록한다.
 
 ## 설계와 실험
 

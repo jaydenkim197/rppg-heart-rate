@@ -1,5 +1,5 @@
-function [settings, environment, report] = main(video_file, roi_boxes, interval_s)
-%MAIN Inspect the environment, or estimate Method A from one RGB video.
+function [settings, environment, report] = main(video_file, roi_boxes, interval_s, method)
+%MAIN Inspect the environment, or estimate the selected method from one RGB video.
 % Use [~, ~, report] = main(video_file, roi_boxes, [start_s end_s]).
 
 settings = config();
@@ -30,8 +30,14 @@ if nargin >= 1
     if nargin >= 3
         settings.analysis_interval_s = interval_s;
     end
+    if nargin < 4
+        method = 'A';
+    end
+    if strcmp(method, 'B')
+        settings.spatial_filter = 'median';
+    end
     rgb_data = extract_rgb(video_file, settings);
-    method_signal = apply_method(rgb_data, 'A', settings);
+    method_signal = apply_method(rgb_data, method, settings);
     report = struct('rgb_data', rgb_data, 'signal', method_signal, ...
         'estimate', estimate_hr(method_signal, settings));
     return

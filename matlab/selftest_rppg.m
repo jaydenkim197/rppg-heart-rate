@@ -64,6 +64,14 @@ assert(all(bench.metrics.n_total == 2 & bench.metrics.n_paired == 1));
 assert(all(bench.metrics.valid_rate_pct == 50 & bench.metrics.within_5_pct == 50));
 assert(all(bench.metrics.MAE < 1));
 assert(any(bench.predictions.method == "ResearchNoBandpass"));
+criteria = table(["MAE"; "valid_rate_pct"], [0.5; 100], [2; 0], [1; 1], [1; 50], ...
+    'VariableNames', {'metric', 'target', 'unacceptable', 'weight', 'gate'});
+ranking = rank_candidates(bench, criteria, 1, 0.05);
+assert(ranking.state == "tie");
+assert(any(ranking.ranking.rejection_reason == "research_control"));
+unqualified = rank_candidates(bench, criteria, 2, 0.05);
+assert(unqualified.state == "no_eligible_candidate");
+fprintf('PASS: target-based scoring, control exclusion, tie and subject gates.\n');
 trials.split(2) = "independent";
 trials.subject_id(2) = trials.subject_id(1);
 try
@@ -102,6 +110,40 @@ assert(all(masked.pixel_counts(:, 1) == tracked.pixel_counts(:, 1)-1));
 assert(all(masked.raw_rgb == tracked.raw_rgb, 'all'));
 assert(all(masked.measurement_rgb(:, 1, 1) < tracked.measurement_rgb(:, 1, 1)));
 fprintf('PASS: NCC translation and hard saturation masking without replacing raw pixels.\n');
+
+method_names = {'B','B','B','B','B','C','C','C','C','C','D','D','D','D','D','POS'};
+variants = {struct('spatial_filter', 'median'), struct('spatial_filter', 'mean'), ...
+    struct('spatial_filter', 'gaussian'), struct('spatial_filter', 'bilateral'), ...
+    struct('spatial_filter', 'wiener'), struct('color_variant', 'rgb_sum'), ...
+    struct('color_variant', 'difference'), struct('color_variant', 'temporal'), ...
+    struct('color_variant', 'log'), struct('color_variant', 'saturation'), ...
+    struct('pos_fusion', 'weighted'), struct('pos_fusion', 'equal'), ...
+    struct('pos_fusion', 'best'), struct('pos_fusion', 'consensus'), ...
+    struct('pos_fusion', 'spectral'), struct()};
+names = {'median','mean','gaussian','bilateral','wiener','rgb_sum','difference', ...
+    'temporal','log','saturation','weighted','equal','best','consensus','spectral','pooled_pos'};
+candidates = struct('name', names, 'method', method_names, 'overrides', variants);
+report = run_benchmark(trial_for_methods(video_file, rects), 'development', candidates);
+observable = report.predictions.candidate ~= "saturation";
+assert(all(report.predictions.status(observable) == "ok"));
+assert(all(abs(report.predictions.predicted_bpm(observable) - 75) < 1));
+assert(report.predictions.failure_reason(~observable) == "flat_signal", ...
+    'HSV saturation is constant while only the middle RGB channel varies.');
+settings.roi_tracker = 'fixed';
+settings.saturation_mode = 'raw';
+rgb = extract_rgb(video_file, settings);
+% With Green as the largest channel, saturation carries the test pulse.
+rgb.measurement_rgb(:, 1, :) = 90;
+settings.color_variant = 'saturation';
+saturation_check = estimate_hr(apply_method(rgb, 'C', settings), settings);
+assert(strcmp(saturation_check.status, 'ok') && abs(saturation_check.predicted_bpm-75) < 1);
+rgb.roi_valid(:, 2:3) = false;
+independent = estimate_hr(apply_method(rgb, 'D', settings), settings);
+assert(strcmp(independent.status, 'ok') && isequal(independent.usable_regions, 1));
+rgb.roi_valid(:, 1) = false;
+invalid = estimate_hr(apply_method(rgb, 'D', settings), settings);
+assert(strcmp(invalid.failure_reason, 'no_usable_pos_roi'));
+fprintf('PASS: five spatial, five color, five POS fusion candidates and pooled POS.\n');
 end
 
 function signal = signal_data(time_s, values)
@@ -112,4 +154,10 @@ function expect_failure(signal, settings, reason)
 result = estimate_hr(signal, settings);
 assert(strcmp(result.status, 'failed') && strcmp(result.failure_reason, reason), ...
     'Expected %s, got %s.', reason, result.failure_reason);
+end
+
+function trial = trial_for_methods(video_file, rects)
+trial = table("Synthetic", "methods", "development", string(video_file), 0, 12, ...
+    {rects}, 75, 'VariableNames', {'subject_id', 'video_id', 'split', ...
+    'video_file', 'start_s', 'end_s', 'roi_boxes', 'gt_bpm'});
 end
