@@ -1,6 +1,6 @@
 # 촬영·데이터 수집 및 평가 프로토콜
 
-기준은 교수님 과제 안내 3~11쪽과 [승인된 기술 결정 검토서](decision-review.md)다. 2026-11-27 09:00 KST 촬영 전 아래 장비 점검을 수행한다. 현재 카메라·센서·동기화의 실측 검증 결과는 확보 전이다.
+기준은 교수님 과제 안내 3~11쪽과 [2026-11-26 기준 심박 변경](decision-review.md#2026-11-26-기준-심박-변경)이다. 2026-11-27 09:00 KST 촬영 전 카메라·워치·시각의 예비 기록을 확인한다. 자체 촬영의 유일한 기준 심박 측정기는 Apple Watch다.
 
 ## 1. 촬영 전 장비 점검
 
@@ -8,14 +8,13 @@
 |---|---|---|
 | 1. 기본 설정 | iPhone 16 Pro 후면 1×, Blackmagic Camera, 삼각대, 4K·60 fps 및 1/60초 우선. ISO·WB는 적정 노출에서 고정하고 거리별로 초점을 조정한 뒤 잠근다. 기존 실내조명을 유지하고 Off Speed Recording을 끈다. | 얼굴 ROI가 과다 노출·과도한 암부에 묻히지 않고 초점과 프레임이 유지되는지 예비 영상에서 확인한다. 설정과 조명 상태를 기록한다. |
 | 2. 코덱·SSD | ProRes 422 HQ, ProRes 422, 고비트레이트 H.264 순으로 실제로 지원되는 후보를 확인한다. 같은 설정으로 5~10초 파일을 만든다. 긴 회복 영상을 찍기 전 저장 공간과 연속 기록도 확인한다. | Windows MATLAB `VideoReader`로 파일을 열고 초반·중간·끝을 디코딩한다. 해상도, 타임스탬프, 프레임 누락과 기록 중단을 확인한다. 예비 장비 검사에서 실패하면 확인된 코덱·프레임률을 선택해 조건과 사유를 남긴다. |
-| 3. 연속 기준 신호 | MAX30102+ESP32에서 Red·IR 원본, 단조 시각, 샘플 번호를 수집한다. 100 Hz는 초기 설정이다. 샘플 취득 시각과 PC 수신 시각을 구분한다. | 예비 기록에서 유효한 연속 맥파와 샘플 간격을 확인하고 FIFO 누락 및 포화·평탄·결측 구간을 기록한다. Apple Watch와 같은 창의 BPM을 교차 확인한다. |
-| 4. 시간 동기화 | ESP32가 시작·종료 LED 이벤트와 내부 시각을 함께 기록한다. 카메라에서 LED를 볼 수 있게 두고 점등은 얼굴 측정 구간 밖에서 한다. | 영상과 ESP32 양쪽에서 같은 두 이벤트를 식별할 수 있어야 한다. 두 앵커 사이의 시간 차이와 드리프트를 기록한다. 워치는 공통 UTC 시각으로 정렬하고 기록 주기·갱신 지연을 남긴다. |
-| 5. 스마트워치 | 피험자별 Apple Watch 심박 기록과 측정 UTC 시각을 내보낼 수 있는지 확인한다. 영상과 같은 평가 구간에 해당하는 값을 보관한다. | 60초 구간의 기준 BPM을 재현할 수 있는지 확인한다. 기준값이 누락되면 해당 원인과 시도를 남긴다. 초 단위 변화를 평가할 때는 시간 해상도가 확인된 연속 기준 PPG를 사용한다. |
-| 6. 짧은 파일 열기 | 예비 파일의 처음·중간·끝 프레임을 디코딩하고 분석 시간과 두 LED 이벤트가 파일에 들어 있는지 확인한다. | 프레임 시각은 `readFrame` 직전의 `CurrentTime`을 기록하고 증가 여부·간격을 확인한다. `FrameRate`와 실제 프레임 간격을 함께 기록한다. |
+| 3. 공통 시계 | 카메라 iPhone과 Apple Watch의 시계·시간대를 확인한다. 원본 파일에서 첫 프레임에 대응하는 촬영 시작 시각의 출처와 정밀도를 예비 영상으로 확인한다. 시각이 부족하면 공통 시계에서 관찰한 녹화 시작 시각과 오차 범위를 현장 로그에 남긴다. | 영상 시각의 기준점·출처·해상도와 시계 점검 결과를 기록한다. 복사·변환 시각이나 출처가 불명확한 파일 생성 시각은 기준으로 쓰지 않는다. 정렬이 확인되지 않으면 이유를 기록한다. |
+| 4. Apple Watch | 워치를 착용하고 측정 모드와 기종을 기록한다. iPhone 건강 앱에서 측정 시작·종료 시각과 BPM을 내보내고 예비·회복 시도에 필요한 기록 간격을 확인한다. | 동일 60초 구간의 표본 수와 실제 시각, 표본 간격, 최대 공백 및 모드 변경 여부를 확인한다. 데이터가 드물면 촬영 전에 기록 모드를 시험하고 실제 기록을 기준으로 평가 해상도를 정한다. |
+| 5. 짧은 파일 열기 | 예비 파일의 처음·중간·끝 프레임을 디코딩하고 요청한 분석 구간이 파일에 있는지 확인한다. | 프레임 시각은 `readFrame` 직전의 `CurrentTime`을 기록하고 증가 여부·간격을 확인한다. `FrameRate`와 실제 프레임 간격을 함께 기록한다. |
 
-코덱과 SSD는 실제 파일 쓰기·읽기로 판정한다. 장비가 다른 조합으로 바뀌면 변경 시점과 시도를 기록하고 거리 효과 해석에서 구분한다. [Blackmagic Camera 사양](https://www.blackmagicdesign.com/products/blackmagiccamera/techspecs) · [VideoReader](https://www.mathworks.com/help/matlab/ref/videoreader.html) · [MAX30102 데이터시트](https://www.analog.com/media/en/technical-documentation/data-sheets/max30102.pdf)
+코덱과 SSD는 실제 파일 쓰기·읽기로 판정한다. 장비가 다른 조합으로 바뀌면 변경 시점과 시도를 기록하고 거리 효과 해석에서 구분한다. [Blackmagic Camera 사양](https://www.blackmagicdesign.com/products/blackmagiccamera/techspecs) · [VideoReader](https://www.mathworks.com/help/matlab/ref/videoreader.html)
 
-기준 센서나 트리거 문제가 해결되기 전에 촬영해야 한다면 해당 시도를 그대로 보관한다. 동일 구간의 스마트워치 기준이 확보된 영상은 과제 절대 BPM 비교에 사용할 수 있다. 시간 정렬이 확인되지 않은 시도는 연속 변화량·반응 지연의 기준 자료에서 제외하고 사유를 남긴다.
+Apple Watch는 활동 상황과 기록 모드에 따라 측정 간격이 달라진다. 분석에 사용할 실제 간격은 내보낸 기록으로 확인한다. 측정 시작·끝을 기준으로 삼고 내보내기 시각이나 Health 레코드 생성 시각을 사용하지 않는다. [Apple Watch 심박 측정](https://support.apple.com/en-lamr/120277) · [건강 데이터 내보내기](https://support.apple.com/en-me/guide/iphone/iph5ede58c3d/ios) · [HealthKit 샘플 시각](https://developer.apple.com/documentation/healthkit/hksample)
 
 ## 2. 촬영 순서와 시도 목록
 
@@ -30,22 +29,23 @@
 
 ## 3. 보관 규격
 
-로컬 `data/` 또는 팀에서 승인한 비공개 저장소에 보관한다. 기존 [실험 CSV](../configs/experiments_template.csv)의 컬럼은 유지하고 원본·메타데이터 파일을 `video_id`로 연결한다. 시간 구간은 영상 기준 초의 시작·종료를 저장한다.
+로컬 `data/` 또는 팀에서 승인한 비공개 저장소에 보관한다. 표를 `video_id`로 연결한다. 영상 시간은 초, BPM은 beats/min, UTC 시각 문자열은 ISO 8601 형식으로 `Z`를 붙여 보관한다. 원본 시간대 오프셋과 기록 출처도 남긴다. 건강 앱의 전체 XML은 제한된 로컬 보관소에 두고, 분석 CSV에는 동의한 참가자의 해당 시도와 워치 심박 기록만 포함한다.
 
 | 로컬 기록 | 필요한 필드 |
 |---|---|
-| 실험 목록 | 기존 `video_id,subject_id,distance_m,trial,video_file,start_s,end_s,gt_bpm,notes`. `gt_bpm`에는 같은 구간의 Apple Watch 결과를 기록하고 누락이면 비워 둔다. |
-| 촬영 메타데이터 | `video_id,split,scenario,video_start_utc,resolution,configured_fps,codec,shutter_s,iso,white_balance,focus,lens,lighting,frame_drops,notes`. `split`에 `pilot` 또는 `final`, 시나리오에 `rest`, `motion`, `recovery` 등을 기록한다. |
-| MAX30102 원시 표본 | `video_id,sample_index,device_time_us,red,ir,valid`. 누락·포화·FIFO 이상과 수집 설정은 별도 메타데이터에 기록한다. |
-| 동기화 이벤트 | `video_id,event,device_time_us,video_time_s,observed`. 시작·종료 이벤트를 각각 남기고 확인할 수 없는 채널의 시각은 비워 둔다. |
-| 워치 원시 기록 | `video_id,measurement_start_utc,measurement_end_utc,bpm`. 시간대 오프셋을 보존하고 실제 기록 시작·종료, 기록 방식과 기종을 남긴다. |
+| 실험 목록 | 기존 `video_id,subject_id,distance_m,trial,video_file,start_s,end_s,gt_bpm,notes`. `gt_bpm`은 같은 구간의 Apple Watch 기록 평균이며, 기준이 없으면 비워 둔다. [실험 CSV 양식](../configs/experiments_template.csv) |
+| 촬영 메타데이터 | `video_id,split,scenario,video_start_utc,video_start_source,alignment_uncertainty_s,resolution,configured_fps,codec,shutter_s,iso,white_balance,focus,lens,lighting,frame_drops,notes`. `video_start_utc`는 첫 프레임의 시각이고 `alignment_uncertainty_s`에는 시계와 시작 시각 확인에서 얻은 절대 오차 범위를 남긴다. 확인 불가 시 빈 값과 사유를 남긴다. [촬영 메타데이터 CSV 양식](../configs/capture_metadata_template.csv) |
+| 워치 심박 기록 | `video_id,measurement_start_utc,measurement_end_utc,bpm,watch_model,recording_mode,source_offset,notes`. 단일 측정 시각이면 시작·종료가 같다. 기종과 실제 기록 모드, 원본 UTC 오프셋 및 누락 사유를 남긴다. [Apple Watch CSV 양식](../configs/watch_hr_template.csv) |
 | 동작·현장 이상 | `video_id,video_time_s,event,notes`. 얼굴 가림, 동작 시작·끝, 기기 교체와 재촬영 관계를 기록한다. |
 
-영상·PPG에 대응하는 시작·종료 이벤트가 모두 유효하면 두 장비의 시각 차이와 배율을 평가한다. 추가 이벤트를 찍었다면 별도 오차 확인에 사용한다. 시각 이동을 심박 오차가 작아지도록 사후 조정하지 않는다. 참가자 동의와 접근 제한을 적용하고 얼굴 영상·개인별 심박·원시 센서는 공개 저장소에 올리지 않는다.
+절대 시각은 첫 프레임 UTC에 첫 프레임 기준 경과 초를 더한다. MATLAB 프레임 시각의 원점이 0과 다르면 실제 첫 디코딩 프레임 시각을 빼서 경과 시간을 계산한다. 시계 오차를 확인한 경우 확인 근거를 시도와 함께 기록한다. 심박 오차를 줄이기 위한 사후 시간 이동은 적용하지 않는다.
+
+같은 시도에서 합의된 워치 출처의 유효한 양수 BPM만 사용한다. 구간 `[start_s,end_s)`에 들어오는 점 표본과, 시작이 그 구간에 들어오고 종료가 구간 끝을 넘지 않는 구간 표본을 사용한다. 반복 저장된 동일 표본은 한 번 집계하고 같은 시각 범위에 서로 다른 BPM이 있으면 사유를 기록하고 해당 표본들을 제외한다. 시각 근거·유효 표본이 없으면 시도 행은 유지하고 참조를 결측으로 표시한다. 빈 구간 보간, 외삽, 과거값 복제는 적용하지 않는다.
 
 ## 4. 평가 원칙
 
 - Method A–D는 동일 영상, 기본 ROI, 분석 범위 및 탐색 대역에서 독립 비교한다. 시간 필터 미적용은 연구용 대조군이다. 필수 A에는 Bandpass와 FFT를 적용한다.
-- 절대 정확도는 같은 창의 기준 BPM과 비교한다. MAE, RMSE, 유효 추정률·실패 사유, 방법별 및 거리별 결과를 보고한다. 기준 누락과 영상 추정 실패를 별도로 집계한다. 실패도 전체 시도에 남긴다.
-- 연속 비교에는 기준 장비의 시간축과 구간을 맞춘 뒤 Error SD, ΔBPM 오차, 방향 일치 및 변화 감지 지연을 평가한다. 유효 측정과 과거 표시값은 구분한다.
-- 공개 개발 및 독립 검증 분할은 피험자가 겹치지 않아야 한다. 자체 예비는 장비 적합성 확인용이며 본 실험 전 코드·설정·판정 기준을 고정한다. 본 실험 데이터는 알고리즘 선정과 튜닝에서 제외한다.
+- **절대 정확도**는 먼저 동일 60초 구간의 관측 워치 표본 평균과 비교한다. MAE, RMSE, Bias, 유효 추정률, 실패 사유 및 방법별·거리별 결과를 보고한다. 워치 표본 수와 관측 범위를 함께 기록하고 기준 누락을 영상 추정 실패와 별도 집계한다.
+- **시간적 일관성과 변화 추적**에는 Error SD, ΔBPM MAE, 방향 일치 등을 유지한다. 짝지어진 유효 창과 신규 추정값으로 계산한다. 워치 기록 간격·최대 공백·정렬 오차보다 촘촘한 구간에서의 변화나 지연은 평가 불가로 기록한다. 예비 기록으로 지원 가능한 시간 간격과 최소 관측 조건을 정해 본 실험 전에 고정한다.
+- **변화 감지 지연**은 두 시계가 정렬되고 워치에 변화 전후 측정이 충분할 때 워치 기록 대비로 제시한다. 기록 간격, 워치의 측정·갱신 지연, 영상-워치 정렬 오차가 포함된다. 임계값을 넘은 실제 시각은 관측 사이에 있을 수 있다. 절대 생리 반응 시각이나 알고리즘 자체 지연을 이 차이로 확정할 수 없다.
+- 공개 개발 및 독립 검증은 제공자 기준을 사용하며 피험자가 겹치지 않아야 한다. 자체 예비는 장비 적합성과 기록 해상도를 확인하는 데 사용한다. 자체 본 실험 전에 코드·설정·판정 기준을 고정하고, 본 실험 자료는 기술 선정과 튜닝에서 제외한다.

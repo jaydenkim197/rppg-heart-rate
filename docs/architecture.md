@@ -9,7 +9,7 @@
 | `matlab/main.m`, `config.m` | 환경 점검과 경로·설정, RGB 영상 한 편에서 A~D 및 기본 POS 실행. 기본값은 A다. |
 | `extract_rgb.m` | Fixed 또는 NCC 후보로 프레임 시각·RGB·좌표를 기록하고 실제 영상 범위에 있는 ROI 영역을 사용한다. Raw/Hard Masking을 비교하며 피부색 마스크와 추가 추적기는 개발 대상이다. |
 | `apply_method.m`, `estimate_hr.m` | 픽셀 수 가중 Green, 필요한 경우 선형 재표본화, 대칭 Butterworth형 FFT Bandpass와 Hann·최대 bin. B의 공간 필터와 C의 색상 정규화 후보, D의 ROI별 POS와 품질 기반 후보를 같은 신호 분석기로 호출한다. |
-| `evaluate_results.m`, `configs/experiments_template.csv` | 스칼라 BPM 참조와 방법별 결과를 동일 구간으로 연결한다. `run_benchmark`와 `rank_candidates`에서 후보 비교 결과와 채택 기준을 처리한다. 연속 참조는 시도별 [보관 규격](experiment-protocol.md#3-보관-규격)에 따른다. |
+| `evaluate_results.m`, `configs/experiments_template.csv` | 스칼라 BPM 참조와 방법별 결과를 동일 구간으로 연결한다. `run_benchmark`와 `rank_candidates`에서 후보 비교 결과와 채택 기준을 처리한다. 자체 실험의 Apple Watch 시각과 영상의 첫 프레임 UTC는 시도별 [보관 규격](experiment-protocol.md#3-보관-규격)에 따른다. |
 | `origin/feat/evaluation` 및 `origin/chungwanwoo-netizen-patch-1` | 팀원 구현 후보를 보존한다. 현재 브랜치의 기본 함수 계약에 필요한 부분을 선택적으로 재사용한다. |
 
 ## 공통 인터페이스

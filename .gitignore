@@ -16,6 +16,8 @@ Thumbs.db
 *.m4v
 *.webm
 *.csv
+!/configs/capture_metadata_template.csv
+!/configs/watch_hr_template.csv
 *.npy
 *.npz
 *.xlsx
