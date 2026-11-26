@@ -86,6 +86,16 @@ ref_cleanup = onCleanup(@() delete(ref_file)); %#ok<NASGU>
 writelines(["0  1  0"; "75  75  75"; "0  0.5  1"], ref_file);
 reference = read_ubfc_reference(ref_file);
 assert(height(reference) == 3 && reference.time_s(end) == 1 && reference.bpm(2) == 75);
+writelines(["0  1  1  0"; "75  75  75  75"; "0  0.5  0.5  1"], ref_file);
+assert(isequal(read_ubfc_reference(ref_file), reference), 'Identical duplicates count only once.');
+writelines(["0  1  2  0"; "75  75  75  75"; "0  0.5  0.5  1"], ref_file);
+try
+    read_ubfc_reference(ref_file);
+    error('rppg:ExpectedInvalidUbfcReference', 'Conflicting duplicate times must fail.');
+catch problem
+    assert(strcmp(problem.identifier, 'rppg:InvalidUbfcReference'));
+end
+check_watch_reference();
 fprintf('PASS: eight temporal/FFT candidates, recorded failures, split isolation, UBFC parser.\n');
 
 tracking_file = [tempname, '.avi'];
@@ -160,4 +170,39 @@ function trial = trial_for_methods(video_file, rects)
 trial = table("Synthetic", "methods", "development", string(video_file), 0, 12, ...
     {rects}, 75, 'VariableNames', {'subject_id', 'video_id', 'split', ...
     'video_file', 'start_s', 'end_s', 'roi_boxes', 'gt_bpm'});
+end
+
+function check_watch_reference()
+keys = {'video_id', 'start_s', 'end_s'};
+windows = table(["A"; "A"; "A"; "A"; "B"; "C"; "D"], [0;10;20;30;0;0;0], ...
+    [10;20;30;40;10;10;10], 'VariableNames', keys);
+captures = table(["A"; "B"; "D"], ["2026-11-27T00:00:00Z"; "2026-11-27T00:00:00"; ...
+    "2026-11-27T00:00:00Z"], ["camera_test"; "local"; "camera_test"], [0.5;0.5;0.5], ...
+    'VariableNames', {'video_id','video_start_utc','video_start_source','alignment_uncertainty_s'});
+start = ["00"; "05"; "05"; "08"; "09"; "10"; "15"; "15"; "17.5"; "20"];
+stop = start;
+stop(4:5) = ["10"; "11"];
+watch = table(repmat("A", 10, 1), "2026-11-27T00:00:"+start+"Z", ...
+    "2026-11-27T00:00:"+stop+"Z", [60;70;70;80;90;75;85;86;85;90], ...
+    'VariableNames', {'video_id','measurement_start_utc','measurement_end_utc','bpm'});
+reference = align_watch_reference(windows, captures, watch);
+assert(isequaln(reference.gt_bpm, [70;80;90;NaN;NaN;NaN;NaN]));
+assert(isequal(reference.n_watch_samples, [3;2;1;0;0;0;0]));
+assert(reference.n_conflicting_times(2) == 1 && abs(reference.max_watch_gap_s(2) - 7.5) < 1e-9);
+assert(all(reference.reference_status([4,7]) == "no_valid_watch_samples"));
+assert(all(reference.reference_status(5:6) == "capture_timing_unverified"));
+
+prediction = windows(1:4,:);
+prediction.method = repmat("A", 4, 1);
+prediction.predicted_bpm = [72;85;90;NaN];
+prediction.status = ["ok"; "ok"; "ok"; "failed"];
+prediction.failure_reason = [""; ""; ""; "signal_missing"];
+report = evaluate_results(prediction, reference, config());
+assert(report.metrics.n_paired == 3 && abs(report.metrics.error_sd_bpm - std([2,5,0])) < 1e-12);
+rules = struct('lag_s',10,'deadband_bpm',2,'min_watch_samples',2, ...
+    'max_watch_gap_s',10,'max_alignment_uncertainty_s',1);
+trends = evaluate_watch_trends(report.predictions, reference, rules);
+assert(trends.metrics.n_pairs == 3 && trends.metrics.n_reference == 1 && trends.metrics.n_paired == 1);
+assert(trends.metrics.delta_mae_bpm == 3 && trends.metrics.direction_agreement_pct == 100);
+fprintf('PASS: Apple Watch UTC, exact windows, duplicates, missing references, Error SD and trend coverage.\n');
 end

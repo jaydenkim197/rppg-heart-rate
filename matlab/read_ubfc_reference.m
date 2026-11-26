@@ -10,8 +10,20 @@ ppg = str2double(split(strtrim(lines(1))));
 bpm = str2double(split(strtrim(lines(2))));
 time_s = str2double(split(strtrim(lines(3))));
 if numel(time_s) < 2 || numel(ppg) ~= numel(time_s) || numel(bpm) ~= numel(time_s) ...
-        || any(~isfinite(time_s)) || any(diff(time_s) <= 0)
+        || any(~isfinite(time_s)) || any(diff(time_s) < 0)
     error('rppg:InvalidUbfcReference', 'Reference rows and timestamps must align.');
 end
-reference = table(time_s(:), ppg(:), bpm(:), 'VariableNames', {'time_s', 'ppg', 'bpm'});
+
+% Some released records repeat an identical sample. Conflicting values
+% at the same time cannot be placed on a unique time axis.
+duplicate = diff(time_s) == 0;
+if any(duplicate & (diff(ppg) ~= 0 | diff(bpm) ~= 0))
+    error('rppg:InvalidUbfcReference', 'Conflicting samples share a timestamp.');
+end
+keep = [true; ~duplicate];
+if nnz(keep) < 2
+    error('rppg:InvalidUbfcReference', 'At least two distinct times are required.');
+end
+reference = table(time_s(keep), ppg(keep), bpm(keep), ...
+    'VariableNames', {'time_s', 'ppg', 'bpm'});
 end

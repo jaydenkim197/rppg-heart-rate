@@ -16,3 +16,13 @@ MATLAB의 공통 설정은 `matlab/config.m`에서 관리한다. 실제 영상�
 | notes | 촬영 조건과 시간 정렬 관련 메모 |
 
 자체 실험의 기준 심박은 Apple Watch로 기록한다. [촬영 메타데이터 양식](capture_metadata_template.csv)과 [워치 심박 양식](watch_hr_template.csv)을 로컬 `data/`에 복사해 첫 프레임 UTC와 측정의 시작·종료 UTC를 저장한다. `video_id`로 기존 실험 목록과 연결한다. 원본 시간대와 시각의 출처를 남기고 `gt_bpm`에는 같은 구간에서 관측된 유효 표본의 평균을 사용한다. 정렬이 확인되지 않은 경우 기준을 결측으로 기록한다. 평가 구간, 품질 판정 기준, 결측치 처리와 필터 설정은 평가 전에 정하고 모든 방법에 같은 기준을 적용한다. [수집 규격](../docs/experiment-protocol.md#3-보관-규격)
+
+MATLAB에서 `windows`는 `video_id,start_s,end_s` 열이 있는 평가 창 표다. `captures`와 `watch`는 위 로컬 양식으로 준비한 표이며, `watch`에는 시도별로 확인된 워치와 모드에서 나온 행을 담는다. 시각은 UTC 문자열 또는 시간대가 지정된 `datetime`으로 가져온다. 분석 구간의 초는 첫 프레임 기준으로 입력한다.
+
+```matlab
+reference = align_watch_reference(windows, captures, watch);
+summary = evaluate_results(predictions, reference, config());
+trends = evaluate_watch_trends(summary.predictions, reference, rules);
+```
+
+`reference`에는 관측 심박 평균, 표본 수, 첫·마지막 관측 시각, 중앙 표본 간격, 창 양 끝을 포함한 최대 공백, 정렬 오차와 실패 사유가 남는다. `rules`의 `lag_s`, `deadband_bpm`, `min_watch_samples`, `max_watch_gap_s`, `max_alignment_uncertainty_s`는 예비 기록 확인 후 사전 등록한 값을 전달한다. `trends`는 같은 길이의 창을 비교하고 워치의 새 관측을 확인한 뒤 ΔBPM MAE와 방향 일치율 및 분모를 기록한다.
