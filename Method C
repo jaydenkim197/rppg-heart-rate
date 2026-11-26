@@ -1,0 +1,23 @@
+from rppg_common import run
+
+EPS = 1e-8
+
+
+def normalized_signal(rgb, fs):
+
+    R = rgb[:, 0]
+    G = rgb[:, 1]
+    B = rgb[:, 2]
+
+    normalized = G / (R + G + B + EPS)
+
+    return normalized
+
+
+if __name__ == "__main__":
+
+    run(
+        method="C",
+        signal_function=normalized_signal,
+        adaptive=False
+    )
