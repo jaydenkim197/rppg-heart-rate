@@ -1,0 +1,573 @@
+
+import cv2
+import mediapipe as mp
+import numpy as np
+import time
+import csv
+import os
+
+from collections import deque
+from scipy.signal import butter, sosfiltfilt
+from scipy.io import savemat
+from tkinter import Tk, filedialog, messagebox
+
+WINDOW = 10
+UPDATE = 1
+LOW = 0.7
+HIGH = 3.0
+EPS = 1e-8
+MIN_QUALITY = 0.30
+
+ROIS = [
+    [109, 10, 338, 297, 332, 333,
+     299, 9, 69, 104, 103],
+
+    [50, 101, 205, 187,
+     123, 116, 117, 118],
+
+    [280, 330, 425, 411,
+     352, 345, 346, 347]
+]
+
+
+# =====================================
+# ROI RGB 평균 계산
+# =====================================
+
+def extract_roi(rgb, points, indices, method):
+
+    h, w = rgb.shape[:2]
+
+    polygon = points[indices]
+
+    if (
+        np.any(polygon[:, 0] < 0)
+        or np.any(polygon[:, 0] >= w)
+        or np.any(polygon[:, 1] < 0)
+        or np.any(polygon[:, 1] >= h)
+    ):
+        return None
+
+    polygon = cv2.convexHull(polygon)
+
+    x, y, rw, rh = cv2.boundingRect(polygon)
+
+    crop = rgb[y:y+rh, x:x+rw]
+
+    local = polygon.copy()
+    local[:, :, 0] -= x
+    local[:, :, 1] -= y
+
+    mask = np.zeros((rh, rw), np.uint8)
+
+    cv2.fillConvexPoly(mask, local, 255)
+
+    pixels = crop[mask > 0]
+
+    if len(pixels) < 20:
+        return None
+
+    mean_rgb = np.mean(pixels, axis=0)
+
+    # Method B: Gaussian Filter
+    if method == "B":
+
+        green = crop[:, :, 1].astype(np.float32)
+
+        m = (mask > 0).astype(np.float32)
+
+        numerator = cv2.GaussianBlur(
+            green * m, (3, 3), 0.8
+        )
+
+        denominator = cv2.GaussianBlur(
+            m, (3, 3), 0.8
+        )
+
+        filtered = numerator / (denominator + EPS)
+
+        mean_rgb[1] = np.mean(
+            filtered[mask > 0]
+        )
+
+    return mean_rgb, polygon
+
+
+# =====================================
+# 누락 데이터 보정
+# =====================================
+
+def interpolate_rgb(rgb, ts, grid):
+
+    valid = np.isfinite(rgb).all(axis=1)
+
+    if valid.mean() < 0.9:
+        return None
+
+    if valid.sum() < 10:
+        return None
+
+    tv = ts[valid]
+
+    if np.max(np.diff(tv)) > 0.3:
+        return None
+
+    if tv[0] - grid[0] > 0.3:
+        return None
+
+    if grid[-1] - tv[-1] > 0.3:
+        return None
+
+    return np.column_stack([
+        np.interp(grid, tv, rgb[valid, c])
+        for c in range(3)
+    ])
+
+
+# =====================================
+# Bandpass Filter + FFT
+# =====================================
+
+def analyze(signal, fs):
+
+    if signal is None:
+        return None
+
+    if not np.isfinite(signal).all():
+        return None
+
+    signal = signal - np.mean(signal)
+
+    sos = butter(
+        4, [LOW, HIGH],
+        btype="bandpass",
+        fs=fs,
+        output="sos"
+    )
+
+    filtered = sosfiltfilt(sos, signal)
+
+    windowed = filtered * np.hanning(
+        len(filtered)
+    )
+
+    freq = np.fft.rfftfreq(
+        len(filtered), d=1/fs
+    )
+
+    power = np.abs(
+        np.fft.rfft(windowed)
+    ) ** 2
+
+    band = (freq >= LOW) & (freq <= HIGH)
+
+    total = np.sum(power[band])
+
+    if total <= 1e-12:
+        return None
+
+    peak = freq[band][
+        np.argmax(power[band])
+    ]
+
+    near = band & (
+        np.abs(freq - peak) <= 0.1
+    )
+
+    quality = np.sum(power[near]) / total
+
+    return {
+        "freq": freq,
+        "power": power / total,
+        "quality": quality,
+        "wave": filtered
+    }
+
+
+# =====================================
+# Multi-ROI 주파수 스펙트럼 결합
+# =====================================
+
+def fuse(items, adaptive):
+
+    items = [x for x in items if x is not None]
+
+    if not items:
+        return np.nan, 0.0
+
+    if adaptive:
+
+        weights = np.array([
+            x["quality"] for x in items
+        ])
+
+        weights /= weights.sum() + EPS
+
+    else:
+
+        weights = np.ones(len(items)) / len(items)
+
+    freq = items[0]["freq"]
+
+    power = np.zeros_like(freq)
+
+    for weight, item in zip(weights, items):
+
+        power += weight * item["power"]
+
+    band = (freq >= LOW) & (freq <= HIGH)
+
+    peak = freq[band][
+        np.argmax(power[band])
+    ]
+
+    near = band & (
+        np.abs(freq - peak) <= 0.1
+    )
+
+    quality = (
+        np.sum(power[near])
+        / (np.sum(power[band]) + EPS)
+    )
+
+    return peak * 60, quality
+
+
+# =====================================
+# 원본 영상 위에 BPM 표시
+# =====================================
+
+def draw_bpm(frame, points, label):
+
+    h, w = frame.shape[:2]
+
+    x1 = max(0, int(points[:, 0].min()))
+    y1 = max(0, int(points[:, 1].min()))
+
+    x2 = min(w-1, int(points[:, 0].max()))
+    y2 = min(h-1, int(points[:, 1].max()))
+
+    color = (0, 255, 0)
+
+    cv2.rectangle(
+        frame, (x1, y1), (x2, y2),
+        color, 2
+    )
+
+    font = cv2.FONT_HERSHEY_SIMPLEX
+
+    scale = max(0.6, w / 1600)
+
+    (tw, th), _ = cv2.getTextSize(
+        label, font, scale, 2
+    )
+
+    tx = max(0, (x1 + x2 - tw) // 2)
+
+    tx = min(tx, max(0, w-tw-10))
+
+    ty = max(th+10, y1-10)
+
+    cv2.rectangle(
+        frame,
+        (max(0, tx-5), ty-th-5),
+        (min(w-1, tx+tw+5), ty+5),
+        (0, 0, 0), -1
+    )
+
+    cv2.putText(
+        frame, label, (tx, ty),
+        font, scale, color, 2,
+        cv2.LINE_AA
+    )
+
+
+# =====================================
+# 메인 프로그램
+# =====================================
+
+def run(method, signal_function, adaptive=False):
+
+    root = Tk()
+    root.withdraw()
+    root.attributes("-topmost", True)
+
+    camera = messagebox.askyesno(
+        "Input Source",
+        "Yes: Webcam\nNo: Video File"
+    )
+
+    if camera:
+
+        source = 0
+        folder = os.getcwd()
+
+    else:
+
+        source = filedialog.askopenfilename(
+            filetypes=[
+                ("Video", "*.mp4 *.mov *.avi")
+            ]
+        )
+
+        if not source:
+            root.destroy()
+            return
+
+        folder = os.path.dirname(source)
+
+    root.destroy()
+
+    cap = cv2.VideoCapture(source)
+
+    if not cap.isOpened():
+        raise RuntimeError("Cannot open video")
+
+    fs = 30.0 if camera else cap.get(
+        cv2.CAP_PROP_FPS
+    )
+
+    if not np.isfinite(fs) or fs <= 2 * HIGH:
+        cap.release()
+        raise RuntimeError("Invalid FPS")
+
+    mesh = mp.solutions.face_mesh.FaceMesh(
+        static_image_mode=False,
+        max_num_faces=1,
+        refine_landmarks=False,
+        min_detection_confidence=0.5,
+        min_tracking_confidence=0.5
+    )
+
+    buffer = deque()
+    times = deque()
+
+    all_rgb = []
+    all_time = []
+    logs = []
+
+    bpm = np.nan
+    quality = 0.0
+
+    last_update = -1.0
+
+    start = time.monotonic()
+    count = 0
+
+    try:
+
+        while True:
+
+            ret, frame = cap.read()
+
+            if not ret:
+                break
+
+            elapsed = (
+                time.monotonic() - start
+                if camera else count / fs
+            )
+
+            count += 1
+
+            h, w = frame.shape[:2]
+
+            rgb = cv2.cvtColor(
+                frame, cv2.COLOR_BGR2RGB
+            )
+
+            result = mesh.process(rgb)
+
+            frame_rgb = np.full((3, 3), np.nan)
+
+            points = None
+
+            if result.multi_face_landmarks:
+
+                landmarks = (
+                    result.multi_face_landmarks[0]
+                    .landmark
+                )
+
+                points = np.array([
+                    [lm.x*w, lm.y*h]
+                    for lm in landmarks
+                ], dtype=np.int32)
+
+                for i, indices in enumerate(ROIS):
+
+                    roi = extract_roi(
+                        rgb, points, indices, method
+                    )
+
+                    if roi is None:
+                        continue
+
+                    values, polygon = roi
+
+                    frame_rgb[i] = values
+
+                    cv2.polylines(
+                        frame, [polygon], True,
+                        (0, 255, 0), 2
+                    )
+
+            all_rgb.append(frame_rgb)
+            all_time.append(elapsed)
+
+            buffer.append(frame_rgb)
+            times.append(elapsed)
+
+            while (
+                len(times) > 1
+                and times[1] < elapsed-WINDOW
+            ):
+
+                times.popleft()
+                buffer.popleft()
+
+            duration = times[-1] - times[0]
+
+            # 1초마다 BPM 계산
+            if (
+                duration >= WINDOW - 1/fs - 1e-6
+                and elapsed-last_update >= UPDATE-1e-6
+            ):
+
+                data = np.asarray(buffer)
+                ts = np.asarray(times)
+
+                n = int(round(WINDOW * fs))
+
+                grid = elapsed - (
+                    np.arange(n-1, -1, -1) / fs
+                )
+
+                items = []
+
+                for i in range(3):
+
+                    clean = interpolate_rgb(
+                        data[:, i, :], ts, grid
+                    )
+
+                    if clean is None:
+                        continue
+
+                    signal = signal_function(clean, fs)
+
+                    item = analyze(signal, fs)
+
+                    items.append(item)
+
+                bpm, quality = fuse(items, adaptive)
+
+                if quality < MIN_QUALITY:
+                    bpm = np.nan
+
+                logs.append([
+                    elapsed, bpm, quality
+                ])
+
+                last_update = elapsed
+
+                print(
+                    f"Method {method} | "
+                    f"{elapsed:.1f}s | "
+                    f"BPM: {bpm:.1f} | "
+                    f"Quality: {quality:.2f}"
+                )
+
+            # 얼굴 위에 BPM 표시
+            if points is not None:
+
+                if duration < WINDOW - 1/fs - 1e-6:
+
+                    label = f"Collecting {duration:.0f}/20s"
+
+                elif not np.isfinite(frame_rgb).all(axis=1).any():
+
+                    label = "No Signal"
+
+                elif np.isfinite(bpm):
+
+                    label = f"{bpm:.0f} BPM"
+
+                else:
+
+                    label = "Low Quality"
+
+                draw_bpm(frame, points, label)
+
+            else:
+
+                bpm = np.nan
+
+                cv2.putText(
+                    frame, "Face Not Detected",
+                    (20, 40),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.8, (0, 0, 255), 2
+                )
+
+            cv2.putText(
+                frame, f"Method {method}",
+                (20, h-20),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.8, (0, 255, 0), 2
+            )
+
+            scale = min(1.0, 1280/w)
+
+            preview = cv2.resize(
+                frame, None,
+                fx=scale, fy=scale
+            )
+
+            cv2.imshow(
+                f"rPPG Method {method}", preview
+            )
+
+            key = cv2.waitKey(1) & 0xFF
+
+            if key == ord("q") or key == 27:
+                break
+
+    finally:
+
+        cap.release()
+        mesh.close()
+        cv2.destroyAllWindows()
+
+    if not all_rgb:
+        print("No frames processed")
+        return
+
+    # 결과 저장
+    stamp = time.strftime("%Y%m%d_%H%M%S")
+
+    name = f"Method_{method}_{stamp}"
+
+    csv_path = os.path.join(folder, name+".csv")
+    mat_path = os.path.join(folder, name+".mat")
+
+    with open(csv_path, "w", newline="") as f:
+
+        writer = csv.writer(f)
+
+        writer.writerow([
+            "Time", "BPM", "Quality"
+        ])
+
+        writer.writerows(logs)
+
+    savemat(mat_path, {
+        "RGB": np.asarray(all_rgb).transpose(0, 2, 1),
+        "time": np.asarray(all_time),
+        "Fs": fs,
+        "BPM_Log": np.asarray(logs).reshape(-1, 3),
+        "Method": method
+    })
+
+    print("Saved:", csv_path)
+    print("Saved:", mat_path)
