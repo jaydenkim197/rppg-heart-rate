@@ -1,5 +1,5 @@
 function report = run_benchmark(trials, split, candidates, output_dir)
-%RUN_BENCHMARK Compare time processing on fixed, pre-registered video intervals.
+%RUN_BENCHMARK Compare pre-registered ROI and signal candidates on the same intervals.
 % trials is a table with subject_id, video_id, split, video_file, start_s,
 % end_s, roi_boxes (3x4 matrix per cell) and gt_bpm. An absent reference
 % is represented by NaN. Use only locally authorized data and output paths.
@@ -48,12 +48,13 @@ end
 
 base = config();
 candidate_settings = repmat(base, numel(candidates), 1);
-allowed = {'bandpass_variant', 'bandpass_order', 'fft_window', 'fft_padding_factor', 'peak_method'};
+allowed = {'bandpass_variant', 'bandpass_order', 'fft_window', 'fft_padding_factor', 'peak_method', ...
+    'roi_tracker', 'ncc_min_corr', 'saturation_mode'};
 for index = 1:numel(candidates)
     overrides = candidates(index).overrides;
     names = fieldnames(overrides);
     if any(~ismember(names, allowed))
-        error('rppg:InvalidCandidateSetting', 'This sweep accepts temporal and FFT settings only.');
+        error('rppg:InvalidCandidateSetting', 'Unsupported benchmark override.');
     end
     for field = 1:numel(names)
         candidate_settings(index).(names{field}) = overrides.(names{field});
@@ -67,22 +68,29 @@ predictions = table();
 for trial_index = 1:height(requested)
     trial = requested(trial_index, :);
     interval = [trial.start_s, trial.end_s];
-    settings = base;
-    settings.roi_boxes_px = trial.roi_boxes{1};
-    settings.analysis_interval_s = interval;
-    failure = "";
-    try
-        rgb = extract_rgb(string(trial.video_file(1)), settings);
-        signal = apply_method(rgb, 'A', settings);
-    catch problem
-        failure = string(problem.identifier);
-        if strlength(failure) == 0
-            failure = "video_or_roi_error";
-        end
-    end
+    previous_extraction = "";
     for index = 1:numel(candidates)
         method = "A";
         settings = candidate_settings(index);
+        extraction = string(jsonencode({settings.roi_tracker, settings.ncc_min_corr, ...
+            settings.saturation_mode}));
+        if extraction ~= previous_extraction
+            settings.roi_boxes_px = trial.roi_boxes{1};
+            settings.analysis_interval_s = interval;
+            failure = "";
+            roi_coverage = NaN;
+            try
+                rgb = extract_rgb(string(trial.video_file(1)), settings);
+                signal = apply_method(rgb, 'A', settings);
+                roi_coverage = 100 * mean(rgb.roi_valid, 'all');
+            catch problem
+                failure = string(problem.identifier);
+                if strlength(failure) == 0
+                    failure = "video_or_roi_error";
+                end
+            end
+            previous_extraction = extraction;
+        end
         if strcmp(settings.bandpass_variant, 'none')
             method = "ResearchNoBandpass";
         end
@@ -94,9 +102,9 @@ for trial_index = 1:height(requested)
         end
         row = table(trial.video_id, trial.subject_id, split, trial.start_s, trial.end_s, ...
             method, string(candidates(index).name), estimate.predicted_bpm, ...
-            string(estimate.status), string(estimate.failure_reason), estimate.quality, ...
+            string(estimate.status), string(estimate.failure_reason), estimate.quality, roi_coverage, ...
             'VariableNames', {'video_id', 'subject_id', 'split', 'start_s', 'end_s', ...
-            'method', 'candidate', 'predicted_bpm', 'status', 'failure_reason', 'quality'});
+            'method', 'candidate', 'predicted_bpm', 'status', 'failure_reason', 'quality', 'roi_coverage_pct'});
         if ismember('distance_m', trial.Properties.VariableNames)
             row.distance_m = trial.distance_m;
         end

@@ -7,14 +7,14 @@
 | 경로 | 개발 단계 |
 |---|---|
 | `matlab/main.m`, `config.m` | 환경 점검과 경로·설정, RGB 영상 한 편을 대상으로 Method A 실행. |
-| `extract_rgb.m` | 고정 ROI의 프레임 시각·RGB·유효 픽셀 수·포화율 기록. 동적 ROI 추적과 Adaptive Masking은 개발 대상이다. |
+| `extract_rgb.m` | Fixed 또는 NCC 후보로 프레임 시각·RGB·좌표를 기록하고 실제 영상 범위에 있는 ROI 영역을 사용한다. Raw/Hard Masking을 비교하며 피부색 마스크와 추가 추적기는 개발 대상이다. |
 | `apply_method.m`, `estimate_hr.m` | 픽셀 수 가중 Green, 필요한 경우 선형 재표본화, 대칭 Butterworth형 FFT Bandpass와 Hann·최대 bin. B·C·D 및 후보 비교는 후속 단계다. |
 | `evaluate_results.m`, `configs/experiments_template.csv` | 기존 스칼라 BPM CSV 호환. 연속 참조는 시도별 [보관 규격](experiment-protocol.md#3-보관-규격)에 따른다. |
 | `origin/feat/evaluation` 및 `origin/chungwanwoo-netizen-patch-1` | 팀원 구현 후보를 보존한다. 현재 브랜치의 기본 함수 계약에 필요한 부분을 선택적으로 재사용한다. |
 
 ## 공통 인터페이스
 
-- `extract_rgb(video_file,settings)`의 `time_s`는 프레임별 영상 초, `raw_rgb`와 B용 `median_rgb`는 N×3×3(프레임·RGB·ROI), `pixel_counts`는 N×3이다. ROI 순서는 이마·왼쪽 볼·오른쪽 볼이다. `valid`는 프레임의 공통 관측 검사, `roi_valid`는 ROI별 N×3의 독립 관측 상태다. `roi_positions`는 ROI 좌표이며, 고정 사각형은 N×4×3 `[x,y,width,height]`를 사용한다. 프레임에 기록된 데이터는 원본 그대로 보관한다.
+- `extract_rgb(video_file,settings)`의 `time_s`는 프레임별 영상 초, `raw_rgb`와 B용 `median_rgb`는 N×3×3(프레임·RGB·ROI), `pixel_counts`는 N×3이다. ROI 순서는 이마·왼쪽 볼·오른쪽 볼이다. `valid`는 프레임의 공통 관측 검사, `roi_valid`는 ROI별 N×3의 독립 관측 상태다. `roi_positions`는 ROI 좌표이며, 고정 사각형은 N×4×3 `[x,y,width,height]`를 사용한다. `raw_rgb`는 관측 ROI의 원본 평균이며 `measurement_rgb`는 Raw 또는 Hard Masking의 측정값이다. `saturation_fraction`과 `tracking_confidence`는 별도로 기록한다.
 - `apply_method(rgb_data,method,settings)`는 `time_s,values,labels,method`를 반환한다. `values`의 각 열은 하나의 신호이며 기준 A~C는 단일 열, D는 ROI별 신호다. pooled POS는 D와 구분한다.
 - `estimate_hr(method_signal,settings)`는 `predicted_bpm,status,failure_reason,quality`와 `time_s,filtered,frequency_hz,power`를 반환한다. 시각 유효성, 공백, 평탄, 대역 에너지, 품질 실패를 구분한다. 비교 시 동일한 관측 구간과 심박 대역을 사용한다.
 - `evaluate_results(predictions,ground_truth,settings)`는 `video_id`와 동일 구간 기준 결과를 연결한다. 실패 시도, 기술별 유효율, 참조 누락, 참조가 있는 유효 예측의 MAE/RMSE를 구분한다.

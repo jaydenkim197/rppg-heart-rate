@@ -55,19 +55,72 @@ end
 
 capacity = max(1, ceil(diff(interval) * video.FrameRate));
 time_s = zeros(capacity, 1);
-raw_rgb = zeros(capacity, 3, 3);
-saturation_fraction = zeros(capacity, 3);
+raw_rgb = NaN(capacity, 3, 3);
+measurement_rgb = raw_rgb;
+pixel_counts = zeros(capacity, 3);
+roi_positions = NaN(capacity, 4, 3);
+roi_valid = false(capacity, 3);
+saturation_fraction = NaN(capacity, 3);
+tracking_confidence = NaN(capacity, 1);
 count = 0;
 white = double(intmax(class(frame)));
+tracking_mode = char(settings.roi_tracker);
+if strcmp(tracking_mode, 'ncc')
+    tracker = start_ncc(frame, rects);
+elseif ~strcmp(tracking_mode, 'fixed')
+    error('rppg:UnknownTracker', 'Unsupported ROI tracking mode.');
+end
+saturation_mode = char(settings.saturation_mode);
+if ~ismember(saturation_mode, {'raw', 'hard'})
+    error('rppg:UnknownSaturationMode', 'Use raw or hard saturation handling.');
+end
+
 while stamp < interval(2)
     if stamp >= interval(1)
         count = count + 1;
         time_s(count, 1) = stamp;
-        for region = 1:3
-            patch = frame(rects(region, 2):bottom(region), rects(region, 1):right(region), :);
-            pixels = reshape(double(patch), [], 3);
-            raw_rgb(count, :, region) = mean(pixels, 1);
-            saturation_fraction(count, region) = mean(any(pixels == 0 | pixels == white, 2));
+        raw_rgb(count, :, :) = NaN;
+        measurement_rgb(count, :, :) = NaN;
+        pixel_counts(count, :) = 0;
+        roi_positions(count, :, :) = NaN;
+        roi_valid(count, :) = false;
+        saturation_fraction(count, :) = NaN;
+        tracking_confidence(count, 1) = NaN;
+        shift = [0, 0];
+        observed = true;
+        if strcmp(tracking_mode, 'ncc')
+            [tracker, shift, confidence] = update_ncc(tracker, frame);
+            observed = isfinite(confidence) && confidence >= settings.ncc_min_corr;
+            tracking_confidence(count) = confidence;
+            if observed
+                tracker.last = tracker.origin + shift;
+                tracker.misses = 0;
+            else
+                tracker.misses = tracker.misses + 1;
+            end
+        end
+        if observed
+            for region = 1:3
+                left = max(1, rects(region, 1) + shift(1));
+                top = max(1, rects(region, 2) + shift(2));
+                x_end = min(size(frame, 2), right(region) + shift(1));
+                y_end = min(size(frame, 1), bottom(region) + shift(2));
+                if left > x_end || top > y_end
+                    continue
+                end
+                patch = frame(top:y_end, left:x_end, :);
+                pixels = reshape(double(patch), [], 3);
+                clipped = any(pixels == 0 | pixels == white, 2);
+                raw_rgb(count, :, region) = mean(pixels, 1);
+                saturation_fraction(count, region) = mean(clipped);
+                if strcmp(saturation_mode, 'hard')
+                    pixels = pixels(~clipped, :);
+                end
+                measurement_rgb(count, :, region) = mean(pixels, 1);
+                pixel_counts(count, region) = size(pixels, 1);
+                roi_valid(count, region) = ~isempty(pixels);
+                roi_positions(count, :, region) = [left, top, x_end-left+1, y_end-top+1];
+            end
         end
     end
     if ~hasFrame(video)
@@ -83,9 +136,45 @@ if count == 0
     error('rppg:NoVideoFrames', 'No frames in the analysis interval.');
 end
 
-rgb_data = struct('time_s', time_s(1:count), 'raw_rgb', raw_rgb(1:count, :, :), ...
-    'median_rgb', [], 'pixel_counts', repmat(prod(rects(:, 3:4), 2)', count, 1), ...
-    'roi_positions', repmat(reshape(rects', 1, 4, 3), count, 1, 1), ...
-    'valid', true(count, 1), 'roi_valid', true(count, 3), ...
-    'saturation_fraction', saturation_fraction(1:count, :), 'interval_s', interval);
+rows = 1:count;
+rgb_data = struct('time_s', time_s(rows), 'raw_rgb', raw_rgb(rows, :, :), ...
+    'measurement_rgb', measurement_rgb(rows, :, :), 'median_rgb', [], ...
+    'pixel_counts', pixel_counts(rows, :), 'roi_positions', roi_positions(rows, :, :), ...
+    'valid', any(roi_valid(rows, :), 2), 'roi_valid', roi_valid(rows, :), ...
+    'saturation_fraction', saturation_fraction(rows, :), ...
+    'tracking_confidence', tracking_confidence(rows), 'interval_s', interval);
+end
+
+function tracker = start_ncc(frame, rects)
+% Use the original hull as a translation template. No face pixels are added.
+lower = min(rects(:, 1:2), [], 1);
+upper = max(rects(:, 1:2) + rects(:, 3:4) - 1, [], 1);
+margin = max(4, round(0.12*max(upper-lower+1)));
+lower = max([1, 1], lower-margin);
+upper = min([size(frame, 2), size(frame, 1)], upper+margin);
+gray = rgb2gray(frame(lower(2):upper(2), lower(1):upper(1), :));
+template = double(gray);
+if std(template(:)) == 0
+    error('rppg:FlatTrackingTemplate', 'The initial ROI tracking template is flat.');
+end
+tracker = struct('template', template, 'origin', lower, 'last', lower, 'misses', 0);
+end
+
+function [tracker, shift, confidence] = update_ncc(tracker, frame)
+[h, w] = size(tracker.template);
+radius = max(5, round(0.20*max(h, w))) * min(4, tracker.misses+1);
+lower = max([1, 1], tracker.last-radius);
+upper = min([size(frame, 2), size(frame, 1)], tracker.last+[w-1, h-1]+radius);
+search = rgb2gray(frame(lower(2):upper(2), lower(1):upper(1), :));
+confidence = NaN;
+shift = [0, 0];
+if size(search, 1) < h || size(search, 2) < w || std(double(search(:))) == 0
+    return
+end
+correlation = normxcorr2(tracker.template, double(search));
+correlation = correlation(h:size(search, 1), w:size(search, 2));
+correlation(~isfinite(correlation)) = -Inf;
+[confidence, index] = max(correlation(:));
+[y, x] = ind2sub(size(correlation), index);
+shift = lower + [x-1, y-1] - tracker.origin;
 end

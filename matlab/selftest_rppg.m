@@ -79,6 +79,29 @@ writelines(["0  1  0"; "75  75  75"; "0  0.5  1"], ref_file);
 reference = read_ubfc_reference(ref_file);
 assert(height(reference) == 3 && reference.time_s(end) == 1 && reference.bpm(2) == 75);
 fprintf('PASS: eight temporal/FFT candidates, recorded failures, split isolation, UBFC parser.\n');
+
+tracking_file = [tempname, '.avi'];
+tracking_cleanup = onCleanup(@() delete(tracking_file)); %#ok<NASGU>
+writer = VideoWriter(tracking_file, 'Uncompressed AVI');
+writer.FrameRate = fs;
+open(writer);
+frame(rects(1, 2)+1, rects(1, 1)+1, 1) = uint8(255);
+for index = 1:12
+    writeVideo(writer, circshift(frame, [0, 3*(index > 4), 0]));
+end
+close(writer);
+settings.roi_boxes_px = rects;
+settings.roi_tracker = 'ncc';
+tracked = extract_rgb(tracking_file, settings);
+assert(all(tracked.valid));
+assert(tracked.roi_positions(1, 1, 1) == rects(1, 1));
+assert(tracked.roi_positions(end, 1, 1) == rects(1, 1)+3);
+settings.saturation_mode = 'hard';
+masked = extract_rgb(tracking_file, settings);
+assert(all(masked.pixel_counts(:, 1) == tracked.pixel_counts(:, 1)-1));
+assert(all(masked.raw_rgb == tracked.raw_rgb, 'all'));
+assert(all(masked.measurement_rgb(:, 1, 1) < tracked.measurement_rgb(:, 1, 1)));
+fprintf('PASS: NCC translation and hard saturation masking without replacing raw pixels.\n');
 end
 
 function signal = signal_data(time_s, values)

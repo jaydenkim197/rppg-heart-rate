@@ -22,6 +22,9 @@ settings.recommended_duration_s = 60;
 % Initial development settings. Selection experiments can replace them.
 settings.analysis_interval_s = [];
 settings.roi_boxes_px = [];
+settings.roi_tracker = 'fixed';
+settings.ncc_min_corr = 0.65;
+settings.saturation_mode = 'raw';
 settings.min_duration_s = 5;
 settings.max_step_ratio = 1.5;
 settings.bandpass_variant = 'butterworth';
