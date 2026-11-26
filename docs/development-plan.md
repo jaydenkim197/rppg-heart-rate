@@ -9,7 +9,7 @@
 | 설계와 촬영 규격 | `IMPLEMENTED` · 데이터/함수 계약과 현장 점검 목록을 작성했다. 장비 실측과 팀 공통 인터페이스 조율은 별도다. |
 | 팀원 코드 점검 | `VERIFIED` · 독립 프로토타입의 합성 테스트 범위. 모듈형 팀원 브랜치는 이 로컬 환경에서 필요한 툴박스가 없어 실행이 중단됐다. |
 | Method A · 고정 ROI MVP | `VERIFIED` · 고정 ROI Method A의 합성 신호 및 영상 테스트. 동일 피부 영역 추적 및 실제 영상 정확도는 검증 대기 상태다. |
-| 공개 데이터 평가 | `PLANNED` · 공식 자료의 영상·참조를 연결하고 개발/독립 분할을 피험자 기준으로 검증한다. 동일 시도·시각·설정을 기록해 비대화형으로 실행한다. |
+| 공개 데이터 평가 | `IMPLEMENTED` · 고정 ROI·시간/FFT 배치 비교와 결과 저장. MPU-rPPG 단일 샘플에서 초기 실행 검증을 했다. UBFC 실자료 및 독립 검증은 남아 있다. |
 | 순차 최적화 및 A~D | `PLANNED` · 공통 ROI와 시간 신호 → B/C → POS/SQI/Fusion 순서. 최소 통과 기준과 정규화는 실험 전에 규정한다. |
 | 독립 검증 및 자체 평가 | `PLANNED` · 독립 공개 자료와 예비 장비를 확인한 뒤 커밋·설정을 고정하고 자체 본 실험을 평가한다. |
 | 실시간 및 다중 ID | `DEFERRED` · 필수 단일 인원 기능 이후에 미래 데이터 미사용, 유지 표시의 실패 집계 및 ID 혼입을 검증한다. |
@@ -25,3 +25,14 @@
 - `408528f` · 현장 장비 점검, Apple Watch·PPG·동기화 이벤트의 수집 항목을 기록했다. 카메라·SSD·기준 장비·LED의 실제 동작은 현장 점검 대기 상태다.
 
 - Method A · MATLAB R2026b에서 `selftest_rppg` 통과. 합성 1.25 Hz 신호와 360프레임 AVI를 모두 75.00 BPM으로 추정했다. 균일 시각 보존, 불규칙 시각 재표본화, 평탄·NaN·대역 밖·긴 공백 실패를 점검했다. Bandpass 응답/창/피크/검사 수치는 비교 전 시제품 설정이다. 긴 관측 공백은 코드로 반환하며 구간 분리 분석은 남아 있다.
+
+## 공개 데이터 평가 초기 점검
+
+`run_benchmark(trials, split, candidates, outputDir)`는 비대화형 고정 ROI 시험을 실행한다. `trials`의 열은 `subject_id,video_id,split,video_file,start_s,end_s,roi_boxes,gt_bpm`이다. `roi_boxes`는 3×4 좌표 행렬을 담은 셀 열이다. `distance_m`은 선택 항목이다. 같은 피험자가 여러 분할에 있으면 실행을 중단한다. 독립 검증·본 실험에서는 단일 고정 후보만 실행한다.
+
+`candidates`는 `name`과 `overrides`를 갖는 구조체 배열이다. 현재 배치 비교는 Butterworth형·Ideal·Gaussian Bandpass, 미적용 연구 대조군, Rectangular/Hann/Hamming, FFT 격자 세분화와 포물선 피크를 지원한다. 같은 영상의 RGB 관측 결과를 재사용하고 실패·참조 누락을 보존한다. 출력 위치를 지정하면 `predictions.csv`, `metrics.csv`, `settings.json`에 유효 여부, MAE·RMSE·Bias·허용 오차 비율과 실제 설정을 기록한다.
+
+- UBFC Dataset 2 공식 자료의 `PPG/HR/time_s` 3행 형식은 `read_ubfc_reference`로 읽는다. 공개 Drive에서 목록과 공급자 안내·예제는 확인했다. 일부 다운로드에서 할당량 안내 또는 HTML 응답이 돌아와 이번에 실제 영상·참조 쌍을 확보하지 못했다. [UBFC-rPPG 공식 데이터](https://sites.google.com/view/ybenezeth/ubfcrppg)
+- MPU-rPPG 공개 샘플 파일 ID `55553417`(MP4), `55553414`(CSV)를 로컬에 확보하고 크기 및 게시된 MD5를 확인했다. 영상은 640×480, 약 60 fps, 약 742.467초다. CSV는 시각 열 없이 0부터 연속하는 `Count`이며 44,548행이 명목 영상 프레임 수와 일치했다. `Count/FrameRate`를 참조 시각으로 사용한 결과는 동기화가 실측된 결과와 구분한다. [MPU-rPPG 공개 샘플](https://figshare.com/articles/dataset/MPU-rPPG_Sample_Dataset/29377835)
+- 첫 15초의 개발용 고정 ROI로 8개 후보를 실행했다. 후보별 유효 결과 1건에서 절대 오차는 약 27.1–31.1 BPM이었다. 움직임이 있는 단일 샘플이며 피험자 단위 독립 검증·추적·동기화 게이트를 통과한 설계가 아니다. 후보 채택은 보류한다. 결과 CSV와 원본은 로컬에 보관했다.
+- `selftest_rppg`에서 8개 후보, 실패 시도의 분모 유지, 피험자 분할 위반 거부, UBFC 참조 파서의 합성 입력을 검증했다.
