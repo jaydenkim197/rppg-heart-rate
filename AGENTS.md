@@ -2,8 +2,9 @@
 
 ## 1. 기준 자료와 상태
 
-- 필수 요구사항은 로컬 교수님 안내 `DIP2026_Term Project.pdf`를 따른다. 공식 마감은 최신 LMS 공지를 따른다.
-- 설계 방향은 로컬 `제안발표자료.pdf`와 최신 팀 합의를 우선한다. 세부 인터페이스와 실험 절차는 `docs/architecture.md`, `docs/development-plan.md`, `docs/experiment-protocol.md`를 확인한다.
+- 이 로컬 작업 폴더의 수업 서류는 Git 저장소와 같은 상위 폴더에 있는 `../course-docs/`에서 관리한다.
+- 필수 요구사항은 로컬 교수님 안내 `../course-docs/DIP2026_Term Project.pdf`를 따른다. 공식 마감은 최신 LMS 공지를 따른다.
+- 설계 방향은 로컬 `../course-docs/제안발표자료.pdf`와 최신 팀 합의를 우선한다. 세부 인터페이스와 실험 절차는 `docs/architecture.md`, `docs/development-plan.md`, `docs/experiment-protocol.md`를 확인한다.
 - 구현 상태는 현재 MATLAB 소스와 설정을 확인해 판단한다. 검증 상태는 실제 실행 결과와 판정 기준으로 판단한다. 문서에 내용이 충돌하면 충돌과 적용 근거를 해당 문서에 기록한다.
 - 상태가 필요한 경우 `PROPOSAL`, `DECISION`, `PLANNED`, `IMPLEMENTED`, `VERIFIED`, `BLOCKED`, `DEFERRED`, `SUPERSEDED`를 사용한다. 구현과 검증은 각각의 근거를 남긴다.
 
