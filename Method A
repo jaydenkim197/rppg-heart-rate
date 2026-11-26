@@ -1,0 +1,18 @@
+
+from rppg_common import run
+
+
+def green_signal(rgb, fs):
+
+    G = rgb[:, 1]
+
+    return G
+
+
+if __name__ == "__main__":
+
+    run(
+        method="A",
+        signal_function=green_signal,
+        adaptive=False
+    )
