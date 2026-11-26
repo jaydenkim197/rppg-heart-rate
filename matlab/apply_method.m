@@ -1,9 +1,23 @@
 function method_signal = apply_method(rgb_data, method, settings)
-%APPLY_METHOD 공통 RGB 데이터로 방법 A~D의 시간 신호를 만들 함수 틀.
-% method는 'A', 'B', 'C', 'D' 중 하나다.
-% 출력은 time_s, values, labels, method를 갖는 구조체다.
-% B에는 extract_rgb에서 공간 필터를 적용해 얻은 RGB를 사용한다.
+%APPLY_METHOD Build the pixel-count-weighted Green signal for Method A.
 
-error('rppg:NotImplemented', ...
-    'apply_method의 Green, 색상 정규화, POS 신호 생성을 구현해야 합니다.');
+method = char(method);
+if ~strcmp(method, 'A')
+    error('rppg:NotImplemented', 'Method %s is not implemented in the baseline.', method);
+end
+sample_count = numel(rgb_data.time_s);
+green = reshape(rgb_data.raw_rgb(:, 2, :), sample_count, numel(settings.roi_names));
+counts = double(rgb_data.pixel_counts);
+usable = isfinite(green) & isfinite(counts) & counts > 0;
+if isfield(rgb_data, 'roi_valid')
+    usable = usable & rgb_data.roi_valid;
+end
+green(~usable) = 0;
+counts(~usable) = 0;
+total = sum(counts, 2);
+values = NaN(sample_count, 1);
+valid = rgb_data.valid(:) & total > 0;
+values(valid) = sum(green(valid, :) .* counts(valid, :), 2) ./ total(valid);
+method_signal = struct('time_s', rgb_data.time_s(:), 'values', values, ...
+    'labels', {{'Green'}}, 'method', method);
 end

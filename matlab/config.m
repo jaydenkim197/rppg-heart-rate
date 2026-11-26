@@ -16,6 +16,16 @@ settings.roi_names = {'forehead', 'left_cheek', 'right_cheek'};
 settings.median_filter_size = [3, 3];
 
 % 권장 촬영 조건이다. 심박 계산에는 실제 영상의 시간 정보를 사용한다.
-settings.recommended_fps = 30;
+settings.recommended_fps = 60;
 settings.recommended_duration_s = 60;
+
+% Initial development settings. Selection experiments can replace them.
+settings.analysis_interval_s = [];
+settings.roi_boxes_px = [];
+settings.min_duration_s = 5;
+settings.max_step_ratio = 1.5;
+settings.bandpass_order = 2;
+settings.bandpass_reflection_s = 3;
+settings.min_band_fraction = 0.001;
+settings.peak_half_width_hz = 0.10;
 end

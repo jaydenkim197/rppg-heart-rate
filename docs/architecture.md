@@ -6,9 +6,9 @@
 
 | 경로 | 개발 단계 |
 |---|---|
-| `matlab/main.m`, `config.m` | 기존 환경 점검과 경로·설정. 영상·데이터셋 실행 모드는 다음 단계의 구현 대상이다. |
-| `extract_rgb.m` | ROI별 프레임 시각·RGB·유효 기록. 수동 고정 ROI부터 시작하고 동일 피부 영역 추적 및 Adaptive Masking을 검증한다. |
-| `apply_method.m`, `estimate_hr.m` | 픽셀 수 가중 Green A 기반을 우선 연동한다. 이후 B·C, pooled POS와 D를 독립 비교한다. |
+| `matlab/main.m`, `config.m` | 환경 점검과 경로·설정, RGB 영상 한 편을 대상으로 Method A 실행. |
+| `extract_rgb.m` | 고정 ROI의 프레임 시각·RGB·유효 픽셀 수·포화율 기록. 동적 ROI 추적과 Adaptive Masking은 개발 대상이다. |
+| `apply_method.m`, `estimate_hr.m` | 픽셀 수 가중 Green, 필요한 경우 선형 재표본화, 대칭 Butterworth형 FFT Bandpass와 Hann·최대 bin. B·C·D 및 후보 비교는 후속 단계다. |
 | `evaluate_results.m`, `configs/experiments_template.csv` | 기존 스칼라 BPM CSV 호환. 연속 참조는 시도별 [보관 규격](experiment-protocol.md#3-보관-규격)에 따른다. |
 | `origin/feat/evaluation` 및 `origin/chungwanwoo-netizen-patch-1` | 팀원 구현 후보를 보존한다. 현재 브랜치의 기본 함수 계약에 필요한 부분을 선택적으로 재사용한다. |
 
