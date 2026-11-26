@@ -1,0 +1,49 @@
+
+import numpy as np
+from rppg_common import run
+
+EPS = 1e-8
+
+
+def pos_signal(rgb, fs):
+
+    N = len(rgb)
+    L = int(round(1.6 * fs))
+
+    H = np.zeros(N)
+    count = np.zeros(N)
+
+    for start in range(N - L + 1):
+
+        end = start + L
+
+        C = rgb[start:end].copy()
+
+        C = C / (np.mean(C, axis=0) + EPS)
+
+        R = C[:, 0]
+        G = C[:, 1]
+        B = C[:, 2]
+
+        S1 = G - B
+        S2 = G + B - 2 * R
+
+        alpha = np.std(S1) / (np.std(S2) + EPS)
+
+        P = S1 + alpha * S2
+
+        P = P - np.mean(P)
+
+        H[start:end] += P
+        count[start:end] += 1
+
+    return H / (count + EPS)
+
+
+if __name__ == "__main__":
+
+    run(
+        method="D",
+        signal_function=pos_signal,
+        adaptive=True
+    )
