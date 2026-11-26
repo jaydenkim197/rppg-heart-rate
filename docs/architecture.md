@@ -1,34 +1,21 @@
 # MATLAB 개발 구조
 
-현재 `main.m`과 `config.m`은 초기 환경 확인과 공통 설정을 담당한다. 나머지 `.m` 파일에는 함수 입력·출력의 약속과 구현 예정 상태를 표시했다. 예정 함수는 호출하면 `rppg:NotImplemented` 오류를 내도록 구성했다.
+[통합 설계 명세서](master-design-specification.md)는 확정 방향과 실험 후보를 정의한다. [개발 계획](development-plan.md)에서 실행 근거 및 단계별 상태를 확인한다. 수식과 후보 비교에는 [문헌·강의 검토](literature-review.md)를 사용한다.
 
-## 파일과 입출력
+## 현재 코드와 구현 대상
 
-| 파일 | 입력 | 출력 및 역할 |
-|---|---|---|
-| `matlab/main.m` | 없음 | 공통 설정, 함수 경로 확인표. 로컬 폴더와 빈 기록 양식 준비 |
-| `matlab/config.m` | 없음 | 경로, 주파수 범위, 거리, 필터 크기 등 설정 구조체 |
-| `matlab/extract_rgb.m` | 영상 경로, 공통 설정 | 프레임 시각, 공통 ROI, 원본 및 미디언 처리 RGB 평균 |
-| `matlab/apply_method.m` | RGB 데이터, 방법 A~D, 공통 설정 | 분석할 시간 신호와 부위 정보 |
-| `matlab/estimate_hr.m` | 시간 신호와 부위 정보, 공통 설정 | BPM, 파형, FFT, 처리 상태, 부위별 결과 |
-| `matlab/evaluate_results.m` | 모든 시도의 예측 결과, GT 표, 공통 설정 | 방법별·거리별 MAE/RMSE, 유효 추정률, 그래프와 결과 CSV |
+| 경로 | 개발 단계 |
+|---|---|
+| `matlab/main.m`, `config.m` | 기존 환경 점검과 경로·설정. 영상·데이터셋 실행 모드는 다음 단계의 구현 대상이다. |
+| `extract_rgb.m` | ROI별 프레임 시각·RGB·유효 기록. 수동 고정 ROI부터 시작하고 동일 피부 영역 추적 및 Adaptive Masking을 검증한다. |
+| `apply_method.m`, `estimate_hr.m` | 픽셀 수 가중 Green A 기반을 우선 연동한다. 이후 B·C, pooled POS와 D를 독립 비교한다. |
+| `evaluate_results.m`, `configs/experiments_template.csv` | 기존 스칼라 BPM CSV 호환. 연속 참조는 시도별 [보관 규격](experiment-protocol.md#3-보관-규격)에 따른다. |
+| `origin/feat/evaluation` 및 `origin/chungwanwoo-netizen-patch-1` | 팀원 구현 후보를 보존한다. 현재 브랜치의 기본 함수 계약에 필요한 부분을 선택적으로 재사용한다. |
 
-## 데이터 약속
+## 공통 인터페이스
 
-- 시간은 초, 주파수는 Hz, 심박수는 BPM, 거리는 m로 저장한다.
-- `rgb_data.time_s`는 N×1 프레임 시각이다.
-- `rgb_data.raw_rgb`와 `rgb_data.median_rgb`는 N×3×3 배열이다. 첫 축은 프레임, 두 번째는 R·G·B, 세 번째는 이마·왼쪽 볼·오른쪽 볼이다.
-- `rgb_data.pixel_counts`는 N×3 부위별 피부 픽셀 수다. A~C와 기본 POS에서 동일한 ROI 집합의 평균을 구할 때 픽셀 수를 반영한다.
-- `rgb_data.roi_positions`와 `rgb_data.valid`에는 프레임별 ROI 위치와 추적 상태를 저장한다. 모든 방법에서 재사용한다.
-- `method_signal.time_s`는 공통 시각, `method_signal.values`는 N×K 시간 신호다. A~C는 한 열, D는 세 부위 신호와 기본 POS 비교 신호를 사용한다.
-- `method_signal.labels`로 각 열의 의미를 기록하고 `method_signal.method`에 A~D를 저장한다.
-- `estimate_hr`는 실제 시간 간격을 확인해 필요한 경우 일정 간격으로 재표본화한 뒤 필터링과 FFT를 수행한다.
-- 결과에는 `video_id`, `method`, `predicted_bpm`, `status`, `failure_reason`을 기록한다. `status`는 `ok` 또는 `failed`다. 구현 예정 상태는 실행 오류로 알리고 실험 결과를 만들지 않는다.
-
-## 구현 단계의 실행 순서
-
-`main`에서 설정을 읽고 `extract_rgb`를 한 번 실행한다. 추출 결과를 공통으로 사용해 각 방법의 `apply_method`와 `estimate_hr`를 실행한다. 모든 시도의 결과를 모아 `evaluate_results`로 전달한다.
-
-공간 필터는 `extract_rgb`에서 프레임별 R·G·B에 적용한다. `apply_method`의 B는 그 처리 결과를 선택한다. D의 기본 POS는 공통 ROI 집합의 RGB 평균을 사용하며, 개선안은 같은 영역을 세 부위로 나누어 신호 품질을 반영한다.
-
-현재 `main`은 환경 확인까지만 수행한다. 위 연결은 기본 방법 A 구현부터 추가한다.
+- `extract_rgb(video_file,settings)`의 `time_s`는 프레임별 영상 초, `raw_rgb`와 B용 `median_rgb`는 N×3×3(프레임·RGB·ROI), `pixel_counts`는 N×3이다. ROI 순서는 이마·왼쪽 볼·오른쪽 볼이다. `valid`는 프레임의 공통 관측 검사, `roi_valid`는 ROI별 N×3의 독립 관측 상태다. `roi_positions`는 ROI 좌표이며, 고정 사각형은 N×4×3 `[x,y,width,height]`를 사용한다. 프레임에 기록된 데이터는 원본 그대로 보관한다.
+- `apply_method(rgb_data,method,settings)`는 `time_s,values,labels,method`를 반환한다. `values`의 각 열은 하나의 신호이며 기준 A~C는 단일 열, D는 ROI별 신호다. pooled POS는 D와 구분한다.
+- `estimate_hr(method_signal,settings)`는 `predicted_bpm,status,failure_reason,quality`와 `time_s,filtered,frequency_hz,power`를 반환한다. 시각 유효성, 공백, 평탄, 대역 에너지, 품질 실패를 구분한다. 비교 시 동일한 관측 구간과 심박 대역을 사용한다.
+- `evaluate_results(predictions,ground_truth,settings)`는 `video_id`와 동일 구간 기준 결과를 연결한다. 실패 시도, 기술별 유효율, 참조 누락, 참조가 있는 유효 예측의 MAE/RMSE를 구분한다.
+- 실시간·다중 인원은 추정 시각과 정보 나이, ROI·ID의 개별 유효성을 추가한다. 기존 분석과 분리해 미래 입력 독립성과 ID 혼입을 검증한다.
