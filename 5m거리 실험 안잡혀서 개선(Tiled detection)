@@ -1,0 +1,866 @@
+
+import cv2
+import mediapipe as mp
+import numpy as np
+import time
+import tkinter as tk
+
+from tkinter import filedialog
+
+
+# ==========================================
+# 1. Configuration
+# ==========================================
+
+CROP_SIZE = 512
+PADDING = 0.35
+MIN_CONFIDENCE = 0.35
+
+TILE_OVERLAP = 0.30
+REDETECT_INTERVAL = 15
+MAX_TRACK_FRAMES = 30
+
+EMA_ALPHA = 0.6
+MIN_ROI_AREA = 20
+
+ROI_LIST = [
+    [109, 10, 338, 297, 332, 333,
+     299, 9, 69, 104, 103],
+
+    [50, 101, 205, 187,
+     123, 116, 117, 118],
+
+    [280, 330, 425, 411,
+     352, 345, 346, 347]
+]
+
+
+# ==========================================
+# 2. Video selection
+# ==========================================
+
+root = tk.Tk()
+root.withdraw()
+
+video_path = filedialog.askopenfilename(
+    title="Select Video",
+    filetypes=[
+        ("Video", "*.mp4 *.avi *.mov *.mkv"),
+        ("All files", "*.*")
+    ]
+)
+
+root.destroy()
+
+if not video_path:
+    raise SystemExit("No video selected")
+
+cap = cv2.VideoCapture(video_path)
+
+if not cap.isOpened():
+    raise SystemExit("Cannot open video")
+
+width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+fps = cap.get(cv2.CAP_PROP_FPS)
+
+print("Resolution:", width, "x", height)
+print("Video FPS:", fps)
+
+
+# ==========================================
+# 3. MediaPipe models
+# ==========================================
+
+mp_detection = mp.solutions.face_detection
+mp_mesh = mp.solutions.face_mesh
+
+detector = mp_detection.FaceDetection(
+    model_selection=1,
+    min_detection_confidence=MIN_CONFIDENCE
+)
+
+mesh = mp_mesh.FaceMesh(
+    static_image_mode=True,
+    max_num_faces=1,
+    refine_landmarks=False,
+    min_detection_confidence=0.4
+)
+
+
+# ==========================================
+# 4. Bounding box validation
+# ==========================================
+
+def clip_box(box, w, h):
+
+    x1, y1, x2, y2 = box
+
+    x1 = max(0, min(w - 1, int(x1)))
+    y1 = max(0, min(h - 1, int(y1)))
+
+    x2 = max(0, min(w, int(x2)))
+    y2 = max(0, min(h, int(y2)))
+
+    if x2 - x1 < 12 or y2 - y1 < 12:
+        return None
+
+    return (x1, y1, x2, y2)
+
+
+# ==========================================
+# 5. Face detection in a region
+# ==========================================
+
+def detect_region(rgb, region):
+
+    x1, y1, x2, y2 = region
+
+    crop = rgb[y1:y2, x1:x2]
+
+    if crop.size == 0:
+        return []
+
+    ch, cw = crop.shape[:2]
+
+    # Enlarge small detection regions
+
+    if max(ch, cw) < 640:
+
+        scale = 640 / max(ch, cw)
+
+        image = cv2.resize(
+            crop,
+            (int(cw * scale), int(ch * scale)),
+            interpolation=cv2.INTER_LINEAR
+        )
+
+    else:
+        image = crop
+
+    result = detector.process(image)
+
+    candidates = []
+
+    if not result.detections:
+        return candidates
+
+    for detection in result.detections:
+
+        bb = (
+            detection.location_data
+            .relative_bounding_box
+        )
+
+        box = (
+            x1 + bb.xmin * cw,
+            y1 + bb.ymin * ch,
+            x1 + (bb.xmin + bb.width) * cw,
+            y1 + (bb.ymin + bb.height) * ch
+        )
+
+        box = clip_box(
+            box,
+            rgb.shape[1],
+            rgb.shape[0]
+        )
+
+        if box is not None:
+
+            score = float(detection.score[0])
+
+            candidates.append((score, box))
+
+    return candidates
+
+
+# ==========================================
+# 6. Tiled Face Detection
+# ==========================================
+
+def tiled_detection(rgb):
+
+    h, w = rgb.shape[:2]
+
+    # First: full frame detection
+
+    candidates = detect_region(
+        rgb, (0, 0, w, h)
+    )
+
+    if candidates:
+
+        return max(
+            candidates,
+            key=lambda item: item[0]
+        )[1]
+
+    # Second: 2x2 and 3x3 tiled detection
+
+    for grid in (2, 3):
+
+        candidates = []
+
+        tile_w = w / grid
+        tile_h = h / grid
+
+        overlap_x = tile_w * TILE_OVERLAP
+        overlap_y = tile_h * TILE_OVERLAP
+
+        for row in range(grid):
+
+            for col in range(grid):
+
+                x1 = max(
+                    0,
+                    int(col * tile_w - overlap_x)
+                )
+
+                y1 = max(
+                    0,
+                    int(row * tile_h - overlap_y)
+                )
+
+                x2 = min(
+                    w,
+                    int((col + 1) * tile_w
+                        + overlap_x)
+                )
+
+                y2 = min(
+                    h,
+                    int((row + 1) * tile_h
+                        + overlap_y)
+                )
+
+                found = detect_region(
+                    rgb,
+                    (x1, y1, x2, y2)
+                )
+
+                candidates.extend(found)
+
+        if candidates:
+
+            return max(
+                candidates,
+                key=lambda item: item[0]
+            )[1]
+
+    return None
+
+
+# ==========================================
+# 7. Initialize optical flow points
+# ==========================================
+
+def initialize_tracking(gray, box):
+
+    mask = np.zeros_like(gray)
+
+    x1, y1, x2, y2 = box
+
+    mask[y1:y2, x1:x2] = 255
+
+    points = cv2.goodFeaturesToTrack(
+        gray,
+        maxCorners=60,
+        qualityLevel=0.01,
+        minDistance=3,
+        mask=mask,
+        blockSize=3
+    )
+
+    return points
+
+
+# ==========================================
+# 8. KLT Optical Flow Tracking
+# ==========================================
+
+def track_face(prev_gray, gray,
+               prev_points, box):
+
+    if prev_gray is None:
+        return None, None
+
+    if prev_points is None:
+        return None, None
+
+    if len(prev_points) < 4:
+        return None, None
+
+    params = dict(
+        winSize=(21, 21),
+        maxLevel=3,
+        criteria=(
+            cv2.TERM_CRITERIA_EPS |
+            cv2.TERM_CRITERIA_COUNT,
+            30,
+            0.01
+        )
+    )
+
+    next_points, status, error = (
+        cv2.calcOpticalFlowPyrLK(
+            prev_gray,
+            gray,
+            prev_points,
+            None,
+            **params
+        )
+    )
+
+    if next_points is None or status is None:
+        return None, None
+
+    # Forward-backward validation
+
+    back_points, back_status, _ = (
+        cv2.calcOpticalFlowPyrLK(
+            gray,
+            prev_gray,
+            next_points,
+            None,
+            **params
+        )
+    )
+
+    if back_points is None or back_status is None:
+        return None, None
+
+    fb_error = np.linalg.norm(
+        prev_points.reshape(-1, 2)
+        - back_points.reshape(-1, 2),
+        axis=1
+    )
+
+    valid = (
+        (status.ravel() == 1)
+        & (back_status.ravel() == 1)
+        & (fb_error < 1.5)
+    )
+
+    old = prev_points.reshape(-1, 2)[valid]
+    new = next_points.reshape(-1, 2)[valid]
+
+    if len(new) < 4:
+        return None, None
+
+    if len(new) < 0.5 * len(prev_points):
+        return None, None
+
+    movement = np.median(
+        new - old,
+        axis=0
+    )
+
+    dx, dy = movement
+
+    x1, y1, x2, y2 = box
+
+    if abs(dx) > (x2 - x1) * 0.5:
+        return None, None
+
+    if abs(dy) > (y2 - y1) * 0.5:
+        return None, None
+
+    new_box = clip_box(
+        (
+            x1 + dx,
+            y1 + dy,
+            x2 + dx,
+            y2 + dy
+        ),
+        gray.shape[1],
+        gray.shape[0]
+    )
+
+    if new_box is None:
+        return None, None
+
+    return (
+        new_box,
+        new.reshape(-1, 1, 2).astype(np.float32)
+    )
+
+
+# ==========================================
+# 9. Face Mesh with square crop
+# ==========================================
+
+def extract_landmarks(rgb, box):
+
+    h, w = rgb.shape[:2]
+
+    x1, y1, x2, y2 = box
+
+    bw = x2 - x1
+    bh = y2 - y1
+
+    cx = (x1 + x2) / 2
+    cy = (y1 + y2) / 2
+
+    side = max(bw, bh) * (1 + 2 * PADDING)
+
+    crop_box = clip_box(
+        (
+            cx - side / 2,
+            cy - side / 2,
+            cx + side / 2,
+            cy + side / 2
+        ),
+        w, h
+    )
+
+    if crop_box is None:
+        return None
+
+    a, b, c, d = crop_box
+
+    crop = rgb[b:d, a:c]
+
+    if crop.size == 0:
+        return None
+
+    enlarged = cv2.resize(
+        crop,
+        (CROP_SIZE, CROP_SIZE),
+        interpolation=cv2.INTER_CUBIC
+    )
+
+    result = mesh.process(enlarged)
+
+    if not result.multi_face_landmarks:
+        return None
+
+    landmarks = (
+        result.multi_face_landmarks[0].landmark
+    )
+
+    points = np.array(
+        [
+            [
+                a + lm.x * (c - a),
+                b + lm.y * (d - b)
+            ]
+            for lm in landmarks
+        ],
+        dtype=np.float32
+    )
+
+    return points
+
+
+# ==========================================
+# 10. Main variables
+# ==========================================
+
+face_box = None
+
+prev_gray = None
+tracking_points = None
+smooth_points = None
+
+total_frames = 0
+face_frames = 0
+mesh_frames = 0
+roi_frames = 0
+
+direct_frames = 0
+tracked_frames = 0
+
+last_detection = -1000
+mesh_failures = 0
+
+start_time = time.perf_counter()
+
+
+# ==========================================
+# 11. Main loop
+# ==========================================
+
+try:
+
+    while True:
+
+        ret, frame = cap.read()
+
+        if not ret:
+            break
+
+        total_frames += 1
+
+        h, w = frame.shape[:2]
+
+        rgb = cv2.cvtColor(
+            frame, cv2.COLOR_BGR2RGB
+        )
+
+        gray = cv2.cvtColor(
+            frame, cv2.COLOR_BGR2GRAY
+        )
+
+        mode = "Searching"
+        status = "No Face"
+
+        color = (0, 0, 255)
+
+        # ----------------------------------
+        # A. Optical flow tracking
+        # ----------------------------------
+
+        if face_box is not None:
+
+            face_box, tracking_points = (
+                track_face(
+                    prev_gray,
+                    gray,
+                    tracking_points,
+                    face_box
+                )
+            )
+
+            if face_box is not None:
+                mode = "Optical Flow"
+
+        # ----------------------------------
+        # B. Face re-detection
+        # ----------------------------------
+
+        need_detection = (
+            face_box is None
+            or total_frames - last_detection
+            >= REDETECT_INTERVAL
+            or mesh_failures >= 3
+        )
+
+        if need_detection:
+
+            new_box = None
+
+            # Search near previous face first
+
+            if face_box is not None:
+
+                x1, y1, x2, y2 = face_box
+
+                bw = x2 - x1
+                bh = y2 - y1
+
+                region = clip_box(
+                    (
+                        x1 - bw,
+                        y1 - bh,
+                        x2 + bw,
+                        y2 + bh
+                    ),
+                    w, h
+                )
+
+                if region is not None:
+
+                    found = detect_region(
+                        rgb, region
+                    )
+
+                    if found:
+
+                        new_box = max(
+                            found,
+                            key=lambda item: item[0]
+                        )[1]
+
+            # Full tiled search if necessary
+
+            if new_box is None:
+
+                new_box = tiled_detection(rgb)
+
+            if new_box is not None:
+
+                if face_box is None:
+                    smooth_points = None
+
+                face_box = new_box
+
+                tracking_points = (
+                    initialize_tracking(
+                        gray, face_box
+                    )
+                )
+
+                last_detection = total_frames
+
+                mode = "Face Detection"
+
+        # Reject tracking without recent detection
+
+        if (
+            total_frames - last_detection
+            > MAX_TRACK_FRAMES
+        ):
+
+            face_box = None
+            tracking_points = None
+            smooth_points = None
+
+        # ----------------------------------
+        # C. Face Mesh
+        # ----------------------------------
+
+        if face_box is not None:
+
+            face_frames += 1
+
+            if mode == "Face Detection":
+                direct_frames += 1
+            else:
+                tracked_frames += 1
+
+            points = extract_landmarks(
+                rgb, face_box
+            )
+
+            x1, y1, x2, y2 = face_box
+
+            status = "Face Found"
+            color = (0, 255, 255)
+
+            if points is not None:
+
+                mesh_frames += 1
+                mesh_failures = 0
+
+                # --------------------------
+                # D. EMA stabilization
+                # --------------------------
+
+                if smooth_points is None:
+
+                    smooth_points = points.copy()
+
+                else:
+
+                    smooth_points = (
+                        EMA_ALPHA * points
+                        + (1 - EMA_ALPHA)
+                        * smooth_points
+                    )
+
+                draw_points = np.rint(
+                    smooth_points
+                ).astype(np.int32)
+
+                valid_count = 0
+
+                # --------------------------
+                # E. ROI validation
+                # --------------------------
+
+                for indices in ROI_LIST:
+
+                    roi = draw_points[indices]
+
+                    hull = cv2.convexHull(roi)
+
+                    area = cv2.contourArea(hull)
+
+                    inside = (
+                        np.all(roi[:, 0] >= 0)
+                        and np.all(roi[:, 0] < w)
+                        and np.all(roi[:, 1] >= 0)
+                        and np.all(roi[:, 1] < h)
+                    )
+
+                    if area >= MIN_ROI_AREA and inside:
+
+                        valid_count += 1
+                        roi_color = (0, 255, 0)
+
+                    else:
+
+                        roi_color = (0, 0, 255)
+
+                    cv2.polylines(
+                        frame,
+                        [hull],
+                        True,
+                        roi_color,
+                        1
+                    )
+
+                if valid_count == 3:
+
+                    roi_frames += 1
+
+                    status = "All ROI OK"
+                    color = (0, 255, 0)
+
+                else:
+
+                    status = "Small ROI"
+
+            else:
+
+                mesh_failures += 1
+                smooth_points = None
+
+                status = "Mesh Failed"
+
+            # Face bounding box
+
+            cv2.rectangle(
+                frame,
+                (x1, y1),
+                (x2, y2),
+                color,
+                2
+            )
+
+            cv2.putText(
+                frame,
+                f"{x2-x1} x {y2-y1} px",
+                (x1, max(20, y1 - 10)),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.55,
+                color,
+                2
+            )
+
+            if mesh_failures >= 3:
+
+                face_box = None
+                tracking_points = None
+                smooth_points = None
+                mesh_failures = 0
+
+        else:
+
+            smooth_points = None
+            mesh_failures = 0
+
+        # ----------------------------------
+        # F. Performance display
+        # ----------------------------------
+
+        face_rate = (
+            100 * face_frames / total_frames
+        )
+
+        mesh_rate = (
+            100 * mesh_frames / total_frames
+        )
+
+        roi_rate = (
+            100 * roi_frames / total_frames
+        )
+
+        processing_fps = (
+            total_frames /
+            max(time.perf_counter() - start_time,
+                0.001)
+        )
+
+        messages = [
+            f"Status: {status}",
+            f"Mode: {mode}",
+            f"Face Available: {face_rate:.1f}%",
+            f"Face Mesh: {mesh_rate:.1f}%",
+            f"Valid ROI: {roi_rate:.1f}%",
+            f"Processing FPS: {processing_fps:.1f}"
+        ]
+
+        for i, message in enumerate(messages):
+
+            cv2.putText(
+                frame,
+                message,
+                (15, 30 + i * 25),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.6,
+                color,
+                2
+            )
+
+        prev_gray = gray.copy()
+
+        # Display resize only
+
+        if w > 1280:
+
+            scale = 1280 / w
+
+            display = cv2.resize(
+                frame,
+                (1280, int(h * scale))
+            )
+
+        else:
+
+            display = frame
+
+        cv2.imshow(
+            "Long Range Face Detection V2",
+            display
+        )
+
+        key = cv2.waitKey(1) & 0xFF
+
+        if key == ord("q") or key == 27:
+            break
+
+
+finally:
+
+    cap.release()
+
+    detector.close()
+    mesh.close()
+
+    cv2.destroyAllWindows()
+
+
+# ==========================================
+# 12. Final results
+# ==========================================
+
+print("\n========== FINAL RESULT ==========")
+
+print("Resolution:", width, "x", height)
+print("Total Frames:", total_frames)
+
+if total_frames > 0:
+
+    print(
+        "Face Available Rate:",
+        round(100 * face_frames / total_frames, 2),
+        "%"
+    )
+
+    print(
+        "Face Mesh Rate:",
+        round(100 * mesh_frames / total_frames, 2),
+        "%"
+    )
+
+    print(
+        "Valid ROI Rate:",
+        round(100 * roi_frames / total_frames, 2),
+        "%"
+    )
+
+    print("Direct Detection Frames:", direct_frames)
+    print("Optical Flow Frames:", tracked_frames)
+
+    print(
+        "Processing FPS:",
+        round(
+            total_frames /
+            max(time.perf_counter() - start_time,
+                0.001),
+            2
+        )
+    )
+
+print("==================================")
