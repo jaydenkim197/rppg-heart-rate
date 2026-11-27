@@ -66,7 +66,7 @@ ranking = sortrows(ranking,{'eligible','score','candidate'}, ...
     {'descend','descend','ascend'});
 record = jsondecode(fileread(settings_path));
 for index = 1:min(2,height(ranking))
-    item = record.candidates(string({record.candidates.name}) == ranking.candidate(index));
+    item = record.candidates(string({record.candidates.name}) == string(ranking.candidate(index)));
     selected = [selected, item]; %#ok<AGROW>
 end
 end
