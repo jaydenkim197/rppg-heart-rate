@@ -31,6 +31,6 @@ trends = evaluate_watch_trends(summary.predictions, reference, rules);
 python tools/extract_watch_hr.py "<영상 매핑 CSV>" "<Apple Health ZIP>" "results/field-intake"
 ```
 
-MATLAB에서 `prepare_field_reference("results/field-intake")`를 실행하면 `watch_reference.csv`와 `experiments_aligned.csv`를 작성한다. 카메라·워치 시계 오차 근거가 비어 있으면 명목 UTC 기준 커버리지와 초안 평균을 `nominal_gt_bpm`으로 표시하고, 실험 평가의 `gt_bpm` 칸은 비워 둔다.
+MATLAB에서 `prepare_field_reference("results/field-intake")`를 실행하면 `watch_reference.csv`와 `experiments_aligned.csv`를 작성한다. 카메라·워치 시계 오차 근거가 비어 있으면 명목 UTC 기준 커버리지와 초안 평균을 `nominal_gt_bpm`으로 표시하고, 실험 평가의 `gt_bpm` 칸은 비워 둔다. 촬영자가 두 시계가 일치했다고 확인한 경우 `ConfirmMatchingClocks=true`로 실행하여 60초 절대 BPM 비교를 사용한다. 이 경우 상태는 `ok_operator_confirmed_clock`이고 수치화하지 못한 시계 오차는 공란으로 남는다.
 
 `reference`에는 관측 심박 평균, 표본 수, 첫·마지막 관측 시각, 중앙 표본 간격, 창 양 끝을 포함한 최대 공백, 정렬 오차와 실패 사유가 남는다. `rules`의 `lag_s`, `deadband_bpm`, `min_watch_samples`, `max_watch_gap_s`, `max_alignment_uncertainty_s`는 예비 기록 확인 후 사전 등록한 값을 전달한다. `trends`는 같은 길이의 창을 비교하고 워치의 새 관측을 확인한 뒤 ΔBPM MAE와 방향 일치율 및 분모를 기록한다.
