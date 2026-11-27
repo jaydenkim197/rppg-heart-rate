@@ -41,6 +41,23 @@ MediaPipe의 표시 좌표 이동을 28개 영상의 24,561프레임에 생성�
 - 시간 필터×FFT 길이 4조합에서 Butterworth×10초가 진단 점수 0.533으로 선두였고, Gaussian×3초는 더 낮은 MAE 12.26 BPM에도 변화량·일관성 점수에서 뒤졌다.
 - SQI×Fusion 4조합에서 Energy Ratio×Spectral은 0.785였다. Cross-correlation×Spectral은 MAE 6.23 BPM으로 네 조합 중 가장 낮았지만 오차 SD 12.22 BPM으로 통과 기준을 넘었다.
 
+## KLT+NCC 기준의 재진단
+
+ROI 수치 선두인 KLT+NCC 재검출을 임시 공통 설정으로 두고 28명에서 후속 후보를 다시 비교했다. 앞 단계의 공식 채택과 구분해 `results/selection-v1/tracked-diagnostic/`에 기록했다. 기존 Fixed 조건에서 모두 탈락했던 시간 필터가 이 조건에서는 통과했다. 이 차이는 후속 변수를 고르기 전에 공통 추적 설정을 확정해야 하는 근거다.
+
+| 단계 | KLT+NCC 조건의 결과 |
+|---|---|
+| 시간 필터 | Butterworth 0.604, Gaussian 0.584. Butterworth의 MAE 13.21, 오차 SD 8.88, ΔBPM MAE 7.91. |
+| FFT 길이 | 전체 창 0.627, 10초 0.583. 10초의 MAE 12.36이 전체 창 13.21보다 낮았으나 일관성·변화량에서 전체 창이 높았다. |
+| 윈도우 | Hamming 0.634, Hann 0.604. |
+| 피크 | 4배 Zero Padding 0.618, 포물선 0.602로 동점. |
+| 색상 | Log와 RGB Sum 점수 0.901, MAE 4.26로 동점. |
+| POS | 1.0초 0.842, 2.0초 0.786, 1.6초 0.785. |
+| SQI | Kurtosis 0.881, 인접 Cross-correlation 0.871로 동점. |
+| ROI Fusion | Consensus 0.814, Best 0.814, Weighted 0.805가 동점 범위. |
+
+피험자별 체크포인트를 저장부터 채점까지 검증했다. 도중에 끊긴 실험을 재개할 때는 사전 등록, 설정, 후보, MATLAB 코드 파일 및 해당 영상의 매니페스트가 일치하는 완료분만 재사용한다. 독립 분할의 추정은 실행하지 않았다.
+
 ## 아직 확인할 항목
 
 - STAPLE은 공식 바이너리의 호환 런타임 확보 또는 MEX 재빌드 후 합성 이동, 좌표 및 개발 비교가 필요하다. 현재 KLT·NCC·CAMShift·MediaPipe 구현은 공통 초기 ROI에 평행 이동을 적용하며, 프레임별 정답 피부 영역과 대조하는 Drift·Jitter, 회전·크기 변화 및 장기 가림은 별도 검증 대상이다.
