@@ -25,4 +25,12 @@ summary = evaluate_results(predictions, reference, config());
 trends = evaluate_watch_trends(summary.predictions, reference, rules);
 ```
 
+외장 원본을 읽어 생성한 영상 매핑 CSV와 Apple Health 내보내기 ZIP을 이용해 로컬 양식을 준비할 수 있다. `tools/extract_watch_hr.py`는 영상 시간에 겹치는 워치 기록만 내보내고, 시도별 착용자를 촬영 순서에서 연결한다. 착용자 교대의 순간은 관측되지 않았으므로 `wearer_blocks.csv`의 시작과 끝은 해당 참가자 영상의 범위다. 원본 HealthData XML은 압축을 푼 파일로 쓰지 않는다.
+
+```powershell
+python tools/extract_watch_hr.py "<영상 매핑 CSV>" "<Apple Health ZIP>" "results/field-intake"
+```
+
+MATLAB에서 `prepare_field_reference("results/field-intake")`를 실행하면 `watch_reference.csv`와 `experiments_aligned.csv`를 작성한다. 카메라·워치 시계 오차 근거가 비어 있으면 명목 UTC 기준 커버리지와 초안 평균을 `nominal_gt_bpm`으로 표시하고, 실험 평가의 `gt_bpm` 칸은 비워 둔다.
+
 `reference`에는 관측 심박 평균, 표본 수, 첫·마지막 관측 시각, 중앙 표본 간격, 창 양 끝을 포함한 최대 공백, 정렬 오차와 실패 사유가 남는다. `rules`의 `lag_s`, `deadband_bpm`, `min_watch_samples`, `max_watch_gap_s`, `max_alignment_uncertainty_s`는 예비 기록 확인 후 사전 등록한 값을 전달한다. `trends`는 같은 길이의 창을 비교하고 워치의 새 관측을 확인한 뒤 ΔBPM MAE와 방향 일치율 및 분모를 기록한다.

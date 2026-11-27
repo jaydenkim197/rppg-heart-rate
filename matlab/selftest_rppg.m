@@ -192,6 +192,13 @@ assert(reference.n_conflicting_times(2) == 1 && abs(reference.max_watch_gap_s(2)
 assert(all(reference.reference_status([4,7]) == "no_valid_watch_samples"));
 assert(all(reference.reference_status(5:6) == "capture_timing_unverified"));
 
+captures.alignment_uncertainty_s(1) = NaN;
+draft = align_watch_reference(windows, captures, watch, AllowNominalTiming=true);
+assert(all(isnan(draft.gt_bpm(1:3))) && isequal(draft.nominal_gt_bpm(1:3), [70;80;90]));
+assert(all(draft.reference_status(1:3) == "nominal_timing_only"));
+strict = align_watch_reference(windows, captures, watch);
+assert(all(strict.reference_status(1:3) == "capture_timing_unverified"));
+
 prediction = windows(1:4,:);
 prediction.method = repmat("A", 4, 1);
 prediction.predicted_bpm = [72;85;90;NaN];

@@ -1,7 +1,15 @@
-function reference = align_watch_reference(windows, captures, watch)
+function reference = align_watch_reference(windows, captures, watch, options)
 %ALIGN_WATCH_REFERENCE Aggregate observed Apple Watch BPM for video intervals.
 % Date columns use ISO 8601 UTC strings ending in Z, or zoned datetimes.
 % The watch table must already be filtered to the agreed device and mode.
+% AllowNominalTiming reports a draft mean and coverage when the absolute
+% camera/Watch timing uncertainty is unknown. Drafts never populate gt_bpm.
+arguments
+    windows table
+    captures table
+    watch table
+    options.AllowNominalTiming (1,1) logical = false
+end
 
 keys = {'video_id', 'start_s', 'end_s'};
 capture_columns = {'video_id', 'video_start_utc', 'video_start_source', 'alignment_uncertainty_s'};
@@ -34,6 +42,9 @@ valid_watch = ~isnat(watch_start) & ~isnat(watch_end) & watch_end >= watch_start
 
 count = height(windows);
 reference.gt_bpm = NaN(count, 1);
+if options.AllowNominalTiming
+    reference.nominal_gt_bpm = NaN(count, 1);
+end
 reference.n_watch_samples = zeros(count, 1);
 reference.first_watch_s = NaN(count, 1);
 reference.last_watch_s = NaN(count, 1);
@@ -45,8 +56,9 @@ reference.reference_status = repmat("capture_timing_unverified", count, 1);
 [found, capture_rows] = ismember(reference.video_id, capture_ids);
 
 for capture = unique(capture_rows(found))'
+    verified = isfinite(timing(capture)) && timing(capture) >= 0;
     if isnat(video_start(capture)) || ismissing(source(capture)) ...
-            || strlength(strtrim(source(capture))) == 0 || ~isfinite(timing(capture)) || timing(capture) < 0
+            || strlength(strtrim(source(capture))) == 0 || (~verified && ~options.AllowNominalTiming)
         continue
     end
     rows = find(capture_rows == capture);
@@ -59,7 +71,9 @@ for capture = unique(capture_rows(found))'
     low = accumarray(group, values, [size(times, 1), 1], @min);
     high = accumarray(group, values, [size(times, 1), 1], @max);
     conflict = low ~= high;
-    reference.alignment_uncertainty_s(rows) = timing(capture);
+    if verified
+        reference.alignment_uncertainty_s(rows) = timing(capture);
+    end
 
     for row = rows'
         start_s = round(reference.start_s(row), 6);
@@ -72,13 +86,18 @@ for capture = unique(capture_rows(found))'
             continue
         end
         sample_times = unique(times(kept, 2));  % Observable by the measurement end time.
-        reference.gt_bpm(row) = mean(low(kept));
+        if verified
+            reference.gt_bpm(row) = mean(low(kept));
+            reference.reference_status(row) = "ok";
+        else
+            reference.nominal_gt_bpm(row) = mean(low(kept));
+            reference.reference_status(row) = "nominal_timing_only";
+        end
         reference.n_watch_samples(row) = nnz(kept);
         reference.first_watch_s(row) = sample_times(1);
         reference.last_watch_s(row) = sample_times(end);
         reference.median_watch_interval_s(row) = median(diff(sample_times));
         reference.max_watch_gap_s(row) = max(diff([start_s; sample_times; end_s]));
-        reference.reference_status(row) = "ok";
     end
 end
 end
