@@ -34,6 +34,10 @@ if isempty(requested) || any(ismissing(requested.video_id) | requested.video_id 
         || height(unique(requested(:, keys))) ~= height(requested)
     error('rppg:InvalidReferenceKeys', 'Requested UBFC reference keys must be nonempty and unique.');
 end
+if any(~isfinite(requested.start_s) | ~isfinite(requested.end_s) ...
+        | requested.start_s < 0 | requested.end_s <= requested.start_s)
+    error('rppg:InvalidReferenceInterval', 'Requested UBFC windows must have positive durations.');
+end
 requested_folders = folders(selected);
 empty_record = table(zeros(0,1), zeros(0,1), zeros(0,1), ...
     'VariableNames', {'time_s','ppg','bpm'});
