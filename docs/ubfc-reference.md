@@ -23,4 +23,6 @@ UBFC Dataset 2 제공자는 CMS50E 접촉 산소포화도계의 파형과 기기
 
 전체 30초 창의 두 추정값 차이 절댓값 중앙값은 1.437 BPM, 수용된 창에서는 1.264 BPM이었다. 수용된 참조와 기기 표시 심박 평균의 차이 절댓값 중앙값은 2.569 BPM이었다. 신뢰할 수 있는 25개 변화량 참조의 크기 중앙값은 4.386 BPM이었다. 참고용 경계 이동에서 공통 수용 25개의 중앙값과 최댓값은 −0.1초에서 0.051/0.340 BPM, +0.1초에서 0.073/0.419 BPM만 변했다. 경계를 움직인 결과는 실제 영상·접촉 장치의 오프셋 측정을 대신할 수 없다. 공식 기준은 원래 등록한 5 BPM과 원래 창을 사용한다.
 
+사전 등록한 방향 판정 ±2 BPM으로 스펙트럼 기준은 증가 16개, 유지 8개, 감소 1개다. 박동 간격 기준과 20/25개 방향이 같았고, 두 방식의 ΔBPM 차이 절댓값 중앙값은 1.328 BPM, 최댓값은 5.921 BPM이었다. 감소와 회복 구간의 일반화는 이 분할의 관측 범위가 좁다.
+
 `audit_ubfc_reference(trials, referenceRoot, outputDir)`에 개발 28명의 공식 30초 매니페스트를 넘기면 네 개의 로컬 표를 재현할 수 있다. `reference_windows.csv`의 키는 `video_id,start_s,end_s`이며 `gt_bpm`과 상태를 사용한다. `reference_delta.csv`에는 전반·후반 창의 상태와 변화량을 보관한다. `agreement_sensitivity.csv`, `timing_sensitivity.csv`에는 기준의 민감도 집계를 둔다. 독립 검증에서는 잠금 이후 같은 규칙으로 `build_ubfc_reference_table(independentTrials, referenceRoot, "independent")`을 호출한다.
