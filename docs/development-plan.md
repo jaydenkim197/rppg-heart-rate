@@ -87,6 +87,20 @@ A, B의 공간 필터, C의 색상 보정, D의 부위별 POS와 pooled POS 기�
 ### UBFC 접촉 PPG 참조 후보 및 KLT 구현
 
 - `estimate_ubfc_reference`는 시각이 불균일한 접촉 PPG 표본을 그대로 사용한다. 실제 시각에서 선형 추세를 제거하고 MATLAB Signal Processing Toolbox의 Lomb–Scargle 스펙트럼으로 0.7–3.0 Hz의 최대 피크를 구한다. 3 Hz의 한 주기인 1/3초보다 큰 관측 공백은 양쪽 창 경계를 포함해 결측으로 처리한다. 긴 공백, 표본 부족, 평탄 신호, 심박 대역 에너지 부족의 원인을 구분한다. 센서가 표시한 BPM은 참조 산출에서 독립적인 비교 기록이다. [UBFC 제공자 안내](https://sites.google.com/view/ybenezeth/ubfcrppg) · [MATLAB Lomb–Scargle 스펙트럼](https://www.mathworks.com/help/signal/ref/plomb.html)
-- MATLAB에서 공개 개발 28명의 첫 30초 접촉 PPG 참조를 모두 산출했다. 센서 표시 HR 평균과의 절대 차이 중앙값은 2.841 BPM이다. 참조 결과에는 표본 수, 관측 범위, 최대 공백과 대역 에너지 비율을 저장했다. 28명 중 어느 영상도 기준 유사도로 추정기를 선택하는 데 쓰지 않았다.
+- MATLAB에서 공개 개발 28명의 첫 30초 접촉 PPG 참조를 모두 산출했다. 센서 표시 HR 평균과의 절대 차이 중앙값은 2.841 BPM이다. 참조 결과에는 표본 수, 관측 범위, 최대 공백과 대역 에너지 비율을 저장했다. 참조 산출에는 접촉 PPG와 표본 시각만 사용했다.
 - 팀원 후보의 Shi–Tomasi 특징점, `vision.PointTracker`와 역방향 오차 검사를 재사용했다. 현 단계 KLT는 초기 세 ROI를 감싸는 영역에서 최대 80점을 감지하고, 2픽셀 허용 오차 내의 평행이동 추정에 최소 4점을 사용한다. 기존 직사각형 ROI와 픽셀 관측 계약을 유지하며, 점이 부족하면 관측을 실패로 표시한다. 회전·스케일 보정 및 점 재검출은 후속 비교 대상이다. [MATLAB KLT 추적기](https://www.mathworks.com/help/vision/ref/vision.pointtracker-system-object.html)
 - MATLAB `selftest_rppg`에서 불규칙한 합성 PPG의 75 BPM, 긴 공백·평탄 실패, 합성 영상의 KLT 3픽셀 이동과 추적 상실을 확인했다.
+
+### 2026-11-27 공개 개발 추적 비교
+
+공개 개발 28명의 동일한 `[0,30)`초 구간과 초기 ROI에서 Method A 및 Raw를 비교했다. Fixed/NCC의 기존 예측을 위 접촉 PPG 참조로 다시 채점했고 같은 창에 KLT를 새로 실행했다. 최대 공백 1/3초 이하 기준을 모든 참조 창에 적용했다. 검증 설정과 결과는 로컬 `results/public-intake/contact-klt-development/`에 보관했다.
+
+| ROI 추적 | 유효/전체 | MAE | RMSE | 동일 21개에서 MAE |
+|---|---:|---:|---:|---:|
+| Fixed | 28/28 | 17.320 | 29.301 | 7.763 |
+| NCC | 26/28 | 14.020 | 24.348 | 9.857 |
+| KLT | 22/28 | 10.681 | 19.396 | 10.428 |
+
+오차 단위는 BPM이다. 추적 실패 후 관측이 부족해 NCC 2개, KLT 6개에서 `nonfinite_or_missing_signal`로 기록됐다. 방법별 유효 건의 단순 평균과 공통 유효 창의 순위가 달랐다. KLT 종합 선정은 유효률과 가림·재검출을 추가 검증한 뒤 판단한다.
+
+접촉 참조는 이동 중앙값으로 기준선을 제거하고 실제 peak 간격을 사용한 보조 계산과도 비교했다. 28개에서 절대 차이 중앙값은 1.455 BPM이며, 4개는 5 BPM보다 크게 달랐다. 시간에 따라 변하는 심박의 단일 창 대표값에 관한 불확실성으로 기록했다. 독립 검증 14명은 참조 산출과 추적 비교에서 보존했다.
