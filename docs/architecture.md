@@ -28,3 +28,5 @@
 자체 평가의 `[0,60)`초는 순차 `readFrame` 직전의 `CurrentTime`으로 판정한다. 명목 FPS는 타임스탬프 대체에 쓰지 않는다. `check_field_frame_timing`은 각 파일의 표시 프레임 크기를 검사하고 실제 순차 판독 시각을 입수 시 저장한 MOV PTS와 비교한다. `FullWindowIds`를 명시한 영상은 분석 창 전체와 다음 프레임의 경계를 검사한다. 확인 결과 CSV는 개인별 파일 경로를 가진 입력 매니페스트와 함께 로컬에 저장한다. [MATLAB readFrame](https://www.mathworks.com/help/matlab/ref/videoreader.readframe.html)
 
 `selftest_field_coordinates(ffmpegPath)`는 재생 행렬이 붙은 비대칭 합성 HEVC MOV로 회전 방향, 표시 프레임의 ROI 추출 평균과 경계 오류를 확인한다. FFmpeg는 합성 표본 생성에 사용한다.
+
+54개 자체 영상의 내장 재생 행렬은 동일한 90° 회전이었다. MOV PTS에서 모든 첫 60초에 3,599프레임이 있다. MATLAB R2026b에서 1개 영상의 분석 창 전체와 53개 영상의 처음 12프레임을 검사했다. 비교한 4,235프레임 모두 표시용 RGB 크기가 일치했으며 타임스탬프 최대 차이는 0.133 μs였다. 전체 분석 창을 검사한 영상에서는 다음 프레임이 60초 경계 밖에 있는 것도 확인했다. 두 방향의 90° 회전으로 수행한 합성 ROI 검사도 통과했다. 입수 단계의 시작·중간·59초 부근 디코딩과 이번 순차 검사는 54개 파일 전체 프레임의 검증을 대신하지 않는다.
