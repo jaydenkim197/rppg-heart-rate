@@ -23,9 +23,12 @@ example = struct();
 example.rgb_data = struct('time_s', time_s, ...
     'raw_rgb', repmat([130 + pulse, 110 + 2*pulse, 90 + pulse], 1, 1, 3));
 example.estimate = estimate_hr(struct('time_s',time_s,'values',pulse,'method','A'), config());
+files = ["final_predictions.csv", "metrics_by_distance.csv", "metrics_by_subject_distance.csv", ...
+    "metrics_common_valid.csv", "failure_breakdown.csv", "performance_by_method.png", ...
+    "performance_by_distance.png", "example_signal.png"];
 root = tempname;
 mkdir(root);
-cleanup = onCleanup(@() remove_generated_fixture(root)); %#ok<NASGU>
+cleanup = onCleanup(@() remove_generated_fixture(root, files)); %#ok<NASGU>
 report = struct('predictions', predictions);
 summary = write_final_report(report, fullfile(root, 'primary'), example);
 overall = summary.metrics(isnan(summary.metrics.distance_m), :);
@@ -36,9 +39,6 @@ assert(sum(summary.failures.n_attempts(summary.failures.issue == "estimation_fai
 assert(sum(summary.failures.n_attempts(summary.failures.issue == "reference_missing")) == 4);
 assert(all(summary.common_metrics.n_total == 1));
 assert(any(summary.subject_metrics.subject_id == "P2" & summary.subject_metrics.distance_m == 1));
-files = ["final_predictions.csv", "metrics_by_distance.csv", "metrics_by_subject_distance.csv", ...
-    "metrics_common_valid.csv", "failure_breakdown.csv", "performance_by_method.png", ...
-    "performance_by_distance.png", "example_signal.png"];
 assert(all(isfile(fullfile(root, 'primary', files))));
 
 report.predictions.gt_bpm(:) = NaN;
@@ -57,10 +57,18 @@ fprintf('PASS: final report denominators, failures, cohort comparison, and plots
 end
 
 
-function remove_generated_fixture(root)
-expected_parent = char(java.io.File(tempdir).getCanonicalPath());
-resolved_root = char(java.io.File(root).getCanonicalPath());
-if strcmp(fileparts(resolved_root), expected_parent)
-    rmdir(resolved_root, 's');
+function remove_generated_fixture(root, files)
+for folder = ["primary", "no_reference"]
+    path = fullfile(root, folder);
+    if isfolder(path)
+        for file = files
+            generated_file = fullfile(path, file);
+            if isfile(generated_file)
+                delete(generated_file);
+            end
+        end
+        rmdir(path);
+    end
 end
+rmdir(root);
 end
