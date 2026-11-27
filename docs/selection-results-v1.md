@@ -21,4 +21,11 @@ ROI의 공식 채택이 완료되지 않아 아래 진단은 기존 공통 초�
 | SQI | Energy Ratio 0.805, 인접 Cross-correlation 0.800 | 0.02 이내 동점. 적용 방식의 독립 결정은 보류. |
 | ROI Fusion | Spectral의 MAE 7.81 BPM, ΔBPM MAE 5.71 BPM, 점수 0.815 | 진단 선두. Weighted는 0.789. pooled POS는 대조군. |
 
+## 추적과 상호작용
+
+MediaPipe의 표시 좌표 이동을 28개 영상의 24,561프레임에 생성하고, MATLAB 추출기에서 같은 프레임 PTS로 연결했다. MediaPipe 28/28이 30초 추정을 냈다. MAE는 14.13 BPM, 오차 SD 13.93 BPM, ΔBPM MAE 12.58 BPM이다. 일관성과 변화량 기준을 통과하지 못했다. STAPLE은 공식 배포본의 레거시 TBB/OpenCV 런타임이 없어 첫 프레임에서 초기화가 중단됐다. [MediaPipe 재현](mediapipe-roi-candidate.md) · [STAPLE 환경 확인](../configs/README.md)
+
+- 시간 필터×FFT 길이 4조합에서 Butterworth×10초가 진단 점수 0.533으로 선두였고, Gaussian×3초는 더 낮은 MAE 12.26 BPM에도 변화량·일관성 점수에서 뒤졌다.
+- SQI×Fusion 4조합에서 Energy Ratio×Spectral은 0.785였다. Cross-correlation×Spectral은 MAE 6.23 BPM으로 네 조합 중 가장 낮았지만 오차 SD 12.22 BPM으로 통과 기준을 넘었다.
+
 회복·움직임 실촬영, 독립 검증, 최종 설정 고정과 216회 자체 A–D 평가를 완료하기 전에는 진단 성능을 최종 수치로 사용하지 않는다.
