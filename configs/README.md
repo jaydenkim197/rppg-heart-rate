@@ -51,3 +51,9 @@ MATLAB에서 `prepare_field_reference("results/field-intake")`를 실행하면 `
 | `none` | 수학적으로 유효한 ROI에 점수 1을 부여한다. 품질 컷을 건너뛰고 기존 평탄·결측·시간·탐색 대역 검사는 적용한다. |
 
 각 점수의 범위는 0~1이다. 구현은 상대 스펙트럼 피크 및 연속 구간 상관의 정의, Pearson 첨도의 정의를 참고했다. 첨도 역수와 주엽 제외 폭은 프로젝트 후보 정의다. 실제 심박 오차에 대한 식별력을 개발 데이터에서 검증한 후 사용할 품질 기준을 고정한다. [Ernst 등 2020](https://www.cinc.org/archives/2020/pdf/CinC2020-165.pdf) · [Elgendi 등 2024](https://doi.org/10.1038/s44328-024-00002-1)
+
+## STAPLE 실행 의존성 검사
+
+공식 MATLAB 구현 `7b6b5b579a7cd25acae6bcabe93f8dfb78040215`의 Windows x64 바이너리를 MATLAB R2026b에서 확인했다. 합성 96×128 RGB의 FHOG 계산은 성공했다. `mexResize`는 동봉 OpenCV 2.4.2 DLL을 검색 경로에 추가한 뒤에도 `MATLAB:mex:ErrInvalidMEXFile`을 반환했다. 수정 없이 실행한 `trackerMain`도 첫 `getSubwindow` 호출에서 중단됐다. 의존성 검사에서 두 OpenCV DLL은 레거시 `tbb.dll`을 가져온다. 공식 아카이브에는 이 DLL이 없고 MATLAB 설치에는 `tbb12.dll`이 있었다. 현재 MATLAB에서 선택된 C++ MEX 컴파일러는 0개였다. [STAPLE 공식 구현](https://github.com/bertinetto/staple/tree/7b6b5b579a7cd25acae6bcabe93f8dfb78040215) · [Intel TBB 호환성 안내](https://cdrdv2-public.intel.com/772619/onetbb_get-started-guide_2021.6-772619.pdf)
+
+호환되는 Windows x64 TBB 런타임을 확보하거나, 지원되는 C++ MEX 컴파일러로 DSST의 `mexResize` 소스를 호환 OpenCV에 재빌드한 후 추적을 재검증한다. 후보 등록 전 프레임을 디스크에 쓰지 않는 어댑터에서 첫 프레임 ROI 바운딩 박스, MATLAB 행·열 순서 변환 및 원본 프레임 좌표 복귀를 확인한다. 현재 상태는 STAPLE 추적 비교 미실행이다. [업스트림 빌드 안내](https://github.com/bertinetto/staple/blob/7b6b5b579a7cd25acae6bcabe93f8dfb78040215/README.md#faq)
