@@ -148,7 +148,8 @@ while stamp < interval(2)
             filtered_rgb(count, :, :) = NaN;
         end
         if observed
-            if use_filtered
+            use_global_filter = strcmp(settings.spatial_filter, 'wiener');
+            if use_global_filter
                 filtered_frame = filter_frame(frame, settings);
             end
             for region = 1:3
@@ -170,7 +171,11 @@ while stamp < interval(2)
                 end
                 pixels = pixels(accepted, :);
                 if use_filtered
-                    patch = filtered_frame(top:y_end, left:x_end, :);
+                    if use_global_filter
+                        patch = filtered_frame(top:y_end,left:x_end,:);
+                    else
+                        patch = filter_patch(frame,top,y_end,left,x_end,settings);
+                    end
                     filtered_pixels = reshape(double(patch), [], 3);
                     filtered_rgb(count, :, region) = mean(filtered_pixels(accepted, :), 1);
                 end
@@ -309,6 +314,27 @@ observed = nnz(inliers) >= settings.klt_min_points;
 if observed
     shift = tracker.offset + round(median(displacement(inliers, :), 1));
 end
+end
+
+function patch = filter_patch(frame, top, bottom, left, right, settings)
+% Preserve the full-frame neighborhood for every measured ROI pixel.
+radius = floor(settings.median_filter_size/2);
+if strcmp(settings.spatial_filter, 'bilateral')
+    radius = [2, 2];  % MATLAB's default 5x5 spatial neighborhood.
+end
+y0 = max(1,top-radius(1));
+x0 = max(1,left-radius(2));
+y1 = min(size(frame,1),bottom+radius(1));
+x1 = min(size(frame,2),right+radius(2));
+if strcmp(settings.spatial_filter, 'bilateral')
+    % imbilatfilt requires a neighborhood smaller than the input patch.
+    y0 = max(1,min(y0,size(frame,1)-6));
+    x0 = max(1,min(x0,size(frame,2)-6));
+    y1 = min(size(frame,1),max(y1,y0+6));
+    x1 = min(size(frame,2),max(x1,x0+6));
+end
+crop = filter_frame(frame(y0:y1,x0:x1,:),settings);
+patch = crop(top-y0+1:bottom-y0+1,left-x0+1:right-x0+1,:);
 end
 
 function filtered = filter_frame(frame, settings)
