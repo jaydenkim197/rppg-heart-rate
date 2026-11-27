@@ -37,6 +37,7 @@ ROI의 공식 채택이 완료되지 않아 아래 진단은 기존 공통 초�
 
 MediaPipe의 표시 좌표 이동을 28개 영상의 24,561프레임에 생성하고, MATLAB 추출기에서 같은 프레임 PTS로 연결했다. MediaPipe 28/28이 30초 추정을 냈다. MAE는 14.13 BPM, 오차 SD 13.93 BPM, ΔBPM MAE 12.58 BPM이다. 일관성과 변화량 기준을 통과하지 못했다. STAPLE은 공식 배포본의 레거시 TBB/OpenCV 런타임이 없어 첫 프레임에서 초기화가 중단됐다. [MediaPipe 재현](mediapipe-roi-candidate.md) · [STAPLE 환경 확인](../configs/README.md)
 
+- 추적×포화 처리에서 상위 두 추적기의 Raw/Hard 총 336개 시도를 채점했다. 같은 추적기 안에서는 두 마스크의 BPM, 유효 상태, 실패 사유와 품질값이 일치했다. 공통 유효 22개에서 KLT+NCC의 MAE는 13.083 BPM, NCC는 13.720 BPM이었다. 네 조합은 모두 진단 기준을 통과했으며 각 추적기에서 Raw/Hard는 동점이다.
 - 시간 필터×FFT 길이 4조합에서 Butterworth×10초가 진단 점수 0.533으로 선두였고, Gaussian×3초는 더 낮은 MAE 12.26 BPM에도 변화량·일관성 점수에서 뒤졌다.
 - SQI×Fusion 4조합에서 Energy Ratio×Spectral은 0.785였다. Cross-correlation×Spectral은 MAE 6.23 BPM으로 네 조합 중 가장 낮았지만 오차 SD 12.22 BPM으로 통과 기준을 넘었다.
 
