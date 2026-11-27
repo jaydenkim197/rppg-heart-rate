@@ -67,14 +67,25 @@ roi_positions = NaN(capacity, 4, 3);
 roi_valid = false(capacity, 3);
 saturation_fraction = NaN(capacity, 3);
 tracking_confidence = NaN(capacity, 1);
+reacquired = false(capacity, 1);
 count = 0;
 white = double(intmax(class(frame)));
 tracking_mode = char(settings.roi_tracker);
 switch tracking_mode
     case 'ncc'
         tracker = start_ncc(frame, rects);
-    case 'klt'
-        tracker = start_klt(frame, rects, settings);
+    case {'klt', 'klt_ncc_reacquire'}
+        validateattributes(settings.klt_min_points, {'numeric'}, {'scalar','integer','>=',2});
+        validateattributes(settings.klt_max_points, {'numeric'}, ...
+            {'scalar','integer','>=',settings.klt_min_points});
+        validateattributes(settings.klt_max_error_px, {'numeric'}, {'scalar','real','finite','positive'});
+        tracker = start_klt(frame, rects, settings, [0, 0]);
+        if isempty(tracker)
+            error('rppg:KltFeaturesUnavailable', 'Too few trackable points in the initial ROI hull.');
+        end
+        if strcmp(tracking_mode, 'klt_ncc_reacquire')
+            anchor = start_ncc(frame, rects);
+        end
     case 'fixed'
         % Keep initial coordinates.
     otherwise
@@ -108,9 +119,19 @@ while stamp < interval(2)
             else
                 tracker.misses = tracker.misses + 1;
             end
-        elseif strcmp(tracking_mode, 'klt')
+        elseif ismember(tracking_mode, {'klt', 'klt_ncc_reacquire'})
             [tracker, shift, observed, confidence] = update_klt(tracker, frame, settings);
             tracking_confidence(count) = confidence;
+            if strcmp(tracking_mode, 'klt_ncc_reacquire')
+                if ~observed
+                    [tracker, anchor, shift, observed] = reacquire_klt(tracker, anchor, frame, rects, settings);
+                    reacquired(count) = observed;
+                end
+                if observed
+                    anchor.last = anchor.origin + shift;
+                    anchor.misses = 0;
+                end
+            end
         end
         if use_filtered
             filtered_rgb(count, :, :) = NaN;
@@ -175,7 +196,8 @@ rgb_data = struct('time_s', time_s(rows), 'raw_rgb', raw_rgb(rows, :, :), ...
     'pixel_counts', pixel_counts(rows, :), 'roi_positions', roi_positions(rows, :, :), ...
     'valid', any(roi_valid(rows, :), 2), 'roi_valid', roi_valid(rows, :), ...
     'saturation_fraction', saturation_fraction(rows, :), ...
-    'tracking_confidence', tracking_confidence(rows), 'interval_s', interval);
+    'tracking_confidence', tracking_confidence(rows), 'reacquired', reacquired(rows), ...
+    'interval_s', interval);
 end
 
 function tracker = start_ncc(frame, rects)
@@ -212,23 +234,38 @@ correlation(~isfinite(correlation)) = -Inf;
 shift = lower + [x-1, y-1] - tracker.origin;
 end
 
-function tracker = start_klt(frame, rects, settings)
-validateattributes(settings.klt_min_points, {'numeric'}, {'scalar','integer','>=',2});
-validateattributes(settings.klt_max_points, {'numeric'}, ...
-    {'scalar','integer','>=',settings.klt_min_points});
-validateattributes(settings.klt_max_error_px, {'numeric'}, {'scalar','real','finite','positive'});
-
-lower = min(rects(:, 1:2), [], 1);
-upper = max(rects(:, 1:2) + rects(:, 3:4) - 1, [], 1);
+function tracker = start_klt(frame, rects, settings, offset)
+tracker = [];
+lower = max([1, 1], min(rects(:, 1:2), [], 1) + offset);
+upper = min([size(frame, 2), size(frame, 1)], max(rects(:, 1:2) + rects(:, 3:4) - 1, [], 1) + offset);
+extent = upper - lower + 1;
+if any(extent < 3)
+    return
+end
 gray = rgb2gray(frame);
-features = detectMinEigenFeatures(gray, 'ROI', [lower, upper-lower+1]);
+features = detectMinEigenFeatures(gray, 'ROI', [lower, extent]);
 if features.Count < settings.klt_min_points
-    error('rppg:KltFeaturesUnavailable', 'Too few trackable points in the initial ROI hull.');
+    return
 end
 features = selectStrongest(features, settings.klt_max_points);
 tracker = struct('tracker', vision.PointTracker('MaxBidirectionalError', settings.klt_max_error_px), ...
-    'origin', features.Location, 'active', true(features.Count, 1));
+    'origin', features.Location, 'active', true(features.Count, 1), 'offset', offset);
 initialize(tracker.tracker, tracker.origin, gray);
+end
+
+function [tracker, anchor, shift, observed] = reacquire_klt(tracker, anchor, frame, rects, settings)
+[~, shift, score] = update_ncc(anchor, frame);
+observed = false;
+if isfinite(score) && score >= settings.ncc_min_corr
+    fresh = start_klt(frame, rects, settings, shift);
+    if ~isempty(fresh)
+        release(tracker.tracker);
+        tracker = fresh;
+        observed = true;
+        return
+    end
+end
+anchor.misses = anchor.misses + 1;
 end
 
 function [tracker, shift, observed, confidence] = update_klt(tracker, frame, settings)
@@ -249,7 +286,7 @@ inliers = vecnorm(displacement-center, 2, 2) <= settings.klt_max_error_px;
 confidence = nnz(inliers) / size(tracker.origin, 1);
 observed = nnz(inliers) >= settings.klt_min_points;
 if observed
-    shift = round(median(displacement(inliers, :), 1));
+    shift = tracker.offset + round(median(displacement(inliers, :), 1));
 end
 end
 

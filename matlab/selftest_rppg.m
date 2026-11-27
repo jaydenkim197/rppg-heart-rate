@@ -243,11 +243,13 @@ frame = repmat(uint8(randi(stream, [45,210], 96, 120)), 1, 1, 3);
 writer = VideoWriter(video_file, 'Uncompressed AVI');
 writer.FrameRate = fs;
 open(writer);
-for index = 1:12
+for index = 1:14
     if index <= 8
         writeVideo(writer, circshift(frame, [0, 3*(index > 4), 0]));
-    else
+    elseif index <= 11
         writeVideo(writer, zeros(size(frame), 'like', frame));
+    else
+        writeVideo(writer, circshift(frame, [0, 5, 0]));
     end
 end
 close(writer);
@@ -257,5 +259,10 @@ tracked = extract_rgb(video_file, settings);
 assert(all(tracked.roi_valid(1:8,:), 'all'));
 assert(all(tracked.roi_positions(8,1,:) - tracked.roi_positions(1,1,:) == 3, 'all'));
 assert(all(~tracked.roi_valid(9:end,:), 'all') && all(isnan(tracked.raw_rgb(9:end,:,:)), 'all'));
-fprintf('PASS: KLT translation and tracking loss on decoded synthetic video.\n');
+settings.roi_tracker = 'klt_ncc_reacquire';
+recovery = extract_rgb(video_file, settings);
+assert(isequaln(recovery.raw_rgb(1:11,:,:), tracked.raw_rgb(1:11,:,:)));
+assert(all(recovery.roi_valid(12:end,:), 'all') && nnz(recovery.reacquired) == 1 && recovery.reacquired(12));
+assert(all(recovery.roi_positions(12:end,1,:) - tracked.roi_positions(1,1,:) == 5, 'all'));
+fprintf('PASS: KLT translation, loss and frame-local NCC reacquisition on decoded video.\n');
 end

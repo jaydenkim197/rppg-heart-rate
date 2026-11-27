@@ -7,7 +7,7 @@
 | 경로 | 개발 단계 |
 |---|---|
 | `matlab/main.m`, `config.m` | 환경 점검과 경로·설정, RGB 영상 한 편에서 A~D 및 기본 POS 실행. 기본값은 A다. |
-| `extract_rgb.m` | Fixed·NCC·KLT 후보로 프레임 시각·RGB·좌표를 기록하고 실제 영상 범위에 있는 ROI 영역을 사용한다. KLT는 평행이동 후보이며 추적 신뢰도는 최초 특징점 대비 유효 일치점 비율이다. Raw/Hard Masking을 비교하며 피부색 마스크와 추가 추적기는 개발 대상이다. |
+| `extract_rgb.m` | Fixed·NCC·KLT 후보로 프레임 시각·RGB·좌표를 기록하고 실제 영상 범위에 있는 ROI 영역을 사용한다. KLT는 평행이동 후보이며 추적 신뢰도는 현 추적 초기화 시점의 특징점 대비 유효 일치점 비율이다. 선택 후보 `klt_ncc_reacquire`는 상실 시 현재 프레임에서 초기 NCC 패치와 일치하는 위치를 찾고 KLT를 재초기화한다. 재검출 프레임은 `reacquired`로 기록한다. Raw/Hard Masking을 비교하며 피부색 마스크와 추가 추적기는 개발 대상이다. |
 | `apply_method.m`, `estimate_hr.m` | 픽셀 수 가중 Green, 필요한 경우 선형 재표본화, 대칭 Butterworth형 FFT Bandpass와 Hann·최대 bin. B의 공간 필터와 C의 색상 정규화 후보, D의 ROI별 POS와 품질 기반 후보를 같은 신호 분석기로 호출한다. |
 | `evaluate_results.m`, `configs/experiments_template.csv` | 스칼라 BPM 참조와 방법별 결과를 동일 구간으로 연결한다. `run_benchmark`와 `rank_candidates`에서 후보 비교 결과와 채택 기준을 처리한다. 자체 실험의 Apple Watch 시각과 영상의 첫 프레임 UTC는 시도별 [보관 규격](experiment-protocol.md#3-보관-규격)에 따른다. |
 | `align_watch_reference.m`, `evaluate_watch_trends.m` | 정규화된 UTC 측정으로 평가 창의 BPM 평균과 관측 범위를 계산한다. 동일 영상·후보에서 정해 둔 시간 간격만큼 떨어진 창을 짝지어 ΔBPM 오차와 방향 일치를 계산한다. |
