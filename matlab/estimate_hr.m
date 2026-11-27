@@ -5,6 +5,20 @@ if ~strcmp(method_signal.method, 'D')
     result = estimate_channel(method_signal, settings);
     return
 end
+% Saved benchmark settings predating configurable SQI retain the existing score.
+if ~isfield(settings, 'pos_sqi')
+    settings.pos_sqi = 'energy_ratio';
+end
+sqi = string(settings.pos_sqi);
+if ~isscalar(sqi) || ~ismember(sqi, ...
+        ["energy_ratio", "relative_peaks", "cross_correlation", "kurtosis", "none"])
+    error('rppg:UnknownPosSqi', 'Unsupported POS quality index.');
+end
+minimum_quality = 0;
+if ~strcmp(settings.pos_sqi, 'none')
+    validateattributes(settings.pos_min_sqi, {'numeric'}, {'scalar','real','finite','>=',0,'<=',1});
+    minimum_quality = settings.pos_min_sqi;
+end
 channel = method_signal;
 for index = size(method_signal.values, 2):-1:1
     channel.values = method_signal.values(:, index);
@@ -13,7 +27,7 @@ end
 bpm = [regions.predicted_bpm];
 quality = [regions.quality];
 usable = find(string({regions.status}) == "ok" & isfinite(quality) ...
-    & quality >= settings.pos_min_sqi & quality > 0);
+    & quality >= minimum_quality & quality > 0);
 result = regions(1);
 result.region_bpm = bpm;
 result.region_quality = quality;
@@ -169,8 +183,72 @@ end
 near_peak = abs(frequency_hz(inside) - peak_hz) <= settings.peak_half_width_hz;
 result.peak_hz = peak_hz;
 result.quality = sum(power(inside(near_peak))) / band_energy;
+if strcmp(method_signal.method, 'D')
+    result.quality = pos_quality(result, centered, inside, peak, settings);
+end
 result.predicted_bpm = 60 * peak_hz;
 result.status = 'ok';
+end
+
+function quality = pos_quality(result, centered, inside, peak, settings)
+switch char(settings.pos_sqi)
+    case 'energy_ratio'
+        quality = result.quality;
+    case 'none'
+        quality = 1;
+    case 'relative_peaks'
+        % A padded grid adds bins without improving spectral resolution.
+        main_lobe_bins = 1;
+        if ~strcmp(settings.fft_window, 'rectangular')
+            main_lobe_bins = 2;
+        end
+        separation_hz = max(settings.peak_half_width_hz, ...
+            main_lobe_bins * result.fs / numel(centered));
+        amplitude = sqrt(result.power);
+        contenders = inside(inside > 1 & inside < numel(amplitude));
+        contenders = contenders( ...
+            abs(result.frequency_hz(contenders)-result.frequency_hz(peak)) > separation_hz ...
+            & amplitude(contenders) >= amplitude(contenders-1) ...
+            & amplitude(contenders) > amplitude(contenders+1));
+        second = max([0; amplitude(contenders)]);
+        quality = (amplitude(peak)-second) / amplitude(peak);
+    case 'cross_correlation'
+        quality = adjacent_correlation(result.filtered, result.fs);
+    case 'kurtosis'
+        % Inverse Pearson kurtosis penalizes impulsiveness. Scaling is
+        % cancelled by the ratio and bounds the numerical moments.
+        normalized = centered / max(abs(centered));
+        squared = normalized.^2;
+        quality = mean(squared)^2 / mean(squared.^2);
+end
+if isfinite(quality)
+    quality = max(0, min(quality, 1));
+end
+end
+
+function quality = adjacent_correlation(signal, fs)
+% Compare full adjacent two-second segments within a half-second lag.
+segment_size = round(2*fs);
+segment_count = floor(numel(signal)/segment_size);
+quality = NaN;
+if segment_count < 2
+    return
+end
+segments = reshape(signal(1:segment_count*segment_size), segment_size, []);
+segments = segments - mean(segments, 1);
+max_lag = min(segment_size-1, round(0.5*fs));
+lags = segment_size + (-max_lag:max_lag);
+scores = zeros(segment_count-1,1);
+for pair = 1:segment_count-1
+    left = segments(:,pair);
+    right = segments(:,pair+1);
+    energy = norm(left)*norm(right);
+    if energy > 0
+        values = conv(left, flipud(right)) / energy;
+        scores(pair) = max(0, max(values(lags)));
+    end
+end
+quality = mean(scores);
 end
 
 function filtered = apply_bandpass(centered, fs, settings)

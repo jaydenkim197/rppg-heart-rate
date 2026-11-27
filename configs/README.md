@@ -37,3 +37,17 @@ python tools/extract_watch_hr.py "results/field-intake/workspace-media/videos.cs
 MATLAB에서 `prepare_field_reference("results/field-intake")`를 실행하면 `watch_reference.csv`와 `experiments_aligned.csv`를 작성한다. 카메라·워치 시계 오차 근거가 비어 있으면 명목 UTC 기준 커버리지와 초안 평균을 `nominal_gt_bpm`으로 표시하고, 실험 평가의 `gt_bpm` 칸은 비워 둔다. 촬영자가 두 시계가 일치했다고 확인한 경우 `ConfirmMatchingClocks=true`로 실행하여 60초 절대 BPM 비교를 사용한다. 이 경우 상태는 `ok_operator_confirmed_clock`이고 수치화하지 못한 시계 오차는 공란으로 남는다.
 
 `reference`에는 관측 심박 평균, 표본 수, 첫·마지막 관측 시각, 중앙 표본 간격, 창 양 끝을 포함한 최대 공백, 정렬 오차와 실패 사유가 남는다. `rules`의 `lag_s`, `deadband_bpm`, `min_watch_samples`, `max_watch_gap_s`, `max_alignment_uncertainty_s`는 예비 기록 확인 후 사전 등록한 값을 전달한다. `trends`는 같은 길이의 창을 비교하고 워치의 새 관측을 확인한 뒤 ΔBPM MAE와 방향 일치율 및 분모를 기록한다.
+
+## Method D 품질 후보와 POS 창
+
+공개 개발 데이터의 `run_benchmark` 후보에서 `pos_window_s`에는 1.0, 1.6, 2.0, 3.0초를 사용한다. 이 값은 RGB 시간 정규화와 overlap-add 구간을 정하며 FFT 분석 구간은 시도 매니페스트의 시작·끝으로 지정한다. ROI별 D와 픽셀 수 가중 RGB의 pooled POS 대조군 모두에 POS 창을 적용한다.
+
+| `pos_sqi` | Method D의 ROI 점수 |
+|---|---|
+| `energy_ratio` | 기존 기본값. 여과된 심박 탐색 대역의 파워 중 추정 피크의 ±0.10 Hz 안에 있는 비율이다. |
+| `relative_peaks` | 가장 큰 여과 스펙트럼 진폭과 가장 큰 별도 국소 피크의 상대 차이다. 같은 주엽을 다시 세는 일을 줄이기 위해 기존 피크 여유 대역과 제로패딩 전 주엽 근사의 큰 값을 사용한다. |
+| `cross_correlation` | 여과된 인접 2초 구간의 평균을 각각 제거한다. ±0.5초 내 최대 정규화 상관의 양수 부분을 구간 쌍에 걸쳐 평균한다. 두 개의 완전한 구간이 필요하다. |
+| `kurtosis` | 중심화한 여과 전 ROI 신호의 Pearson 첨도 역수다. 1에 가까울수록 극단값이 적다는 작업 가설을 비교한다. |
+| `none` | 수학적으로 유효한 ROI에 점수 1을 부여한다. 품질 컷을 건너뛰고 기존 평탄·결측·시간·탐색 대역 검사는 적용한다. |
+
+각 점수의 범위는 0~1이다. 구현은 상대 스펙트럼 피크 및 연속 구간 상관의 정의, Pearson 첨도의 정의를 참고했다. 첨도 역수와 주엽 제외 폭은 프로젝트 후보 정의다. 실제 심박 오차에 대한 식별력을 개발 데이터에서 검증한 후 사용할 품질 기준을 고정한다. [Ernst 등 2020](https://www.cinc.org/archives/2020/pdf/CinC2020-165.pdf) · [Elgendi 등 2024](https://doi.org/10.1038/s44328-024-00002-1)

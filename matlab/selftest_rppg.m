@@ -156,6 +156,67 @@ rgb.roi_valid(:, 1) = false;
 invalid = estimate_hr(apply_method(rgb, 'D', settings), settings);
 assert(strcmp(invalid.failure_reason, 'no_usable_pos_roi'));
 fprintf('PASS: five spatial, five color, five POS fusion candidates and pooled POS.\n');
+
+check_pos_sqi();
+windows = [1.0, 1.6, 2.0, 3.0];
+clear candidates
+for index = 1:numel(windows)
+    overrides = struct('pos_window_s', windows(index), 'pos_sqi', 'cross_correlation');
+    candidates(2*index-1) = struct('name', "D_" + windows(index), 'method', 'D', ...
+        'overrides', overrides);
+    candidates(2*index) = struct('name', "POS_" + windows(index), 'method', 'POS', ...
+        'overrides', overrides);
+end
+checks = run_benchmark(trial_for_methods(video_file, rects), 'development', candidates);
+assert(all(checks.predictions.status == "ok"));
+assert(all(abs(checks.predictions.predicted_bpm-75) < 1));
+fprintf('PASS: four priority SQIs, no-SQI control and four POS window candidates.\n');
+end
+
+function check_pos_sqi()
+settings = config();
+settings.bandpass_variant = 'none';
+settings.fft_padding_factor = 4;
+settings.pos_min_sqi = 0;
+time = (0:30*20-1)'/30;
+tone = sin(2*pi*time);
+signal = struct('time_s', time, 'values', tone, 'method', 'D', 'labels', {{'forehead'}});
+baseline = estimate_hr(signal, settings);
+legacy = estimate_hr(signal, rmfield(settings, 'pos_sqi'));
+assert(isequaln(baseline, legacy) && abs(baseline.predicted_bpm-60) < 0.1);
+
+settings.pos_sqi = 'relative_peaks';
+single = estimate_hr(signal, settings);
+signal.values = tone + sin(2*pi*1.75*time);
+two = estimate_hr(signal, settings);
+assert(single.region_quality > 0.95 && two.region_quality < 0.01);
+
+settings.pos_sqi = 'cross_correlation';
+signal.values = tone;
+checked = estimate_hr(signal, settings);
+assert(checked.region_quality > 0.99);
+short = signal;
+short.time_s = short.time_s(1:3*30);
+short.values = short.values(1:3*30);
+settings_reduced = settings;
+settings_reduced.min_duration_s = 3;
+insufficient = estimate_hr(short, settings_reduced);
+assert(isnan(insufficient.region_quality) ...
+    && strcmp(insufficient.failure_reason, 'no_usable_pos_roi'));
+
+settings.pos_sqi = 'kurtosis';
+smooth = estimate_hr(signal, settings);
+signal.values(200) = 15;
+impulsive = estimate_hr(signal, settings);
+assert(abs(smooth.region_quality-2/3) < 1e-10);
+assert(impulsive.region_quality < smooth.region_quality);
+
+settings.pos_sqi = 'none';
+settings.pos_min_sqi = 1;
+signal.values = [tone, zeros(size(tone))];
+signal.labels = {'forehead', 'cheek'};
+control = estimate_hr(signal, settings);
+assert(isequal(control.usable_regions, 1) && control.quality == 1);
 end
 
 function signal = signal_data(time_s, values)

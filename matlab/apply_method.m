@@ -92,6 +92,7 @@ end
 end
 
 function [time_s, values, fs] = pos_inputs(time_s, values, settings)
+validateattributes(settings.pos_window_s, {'numeric'}, {'scalar','real','finite','positive'});
 steps = diff(time_s);
 fs = NaN;
 if isempty(steps) || any(~isfinite(steps)) || any(steps <= 0)

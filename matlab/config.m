@@ -35,6 +35,7 @@ settings.spatial_sigma_px = 1;
 settings.color_variant = 'rgb_sum';
 settings.color_window_s = 2;
 settings.pos_window_s = 1.6;
+settings.pos_sqi = 'energy_ratio';
 settings.pos_min_sqi = 0.15;
 settings.pos_fusion = 'weighted';
 settings.consensus_tolerance_bpm = 5;
