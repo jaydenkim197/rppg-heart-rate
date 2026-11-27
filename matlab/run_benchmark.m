@@ -101,10 +101,14 @@ for trial_index = 1:height(requested)
     for index = 1:numel(candidates)
         method = methods(index);
         settings = candidate_settings(index);
+        if strcmp(settings.roi_tracker, 'mediapipe') ...
+                && ismember('roi_motion_file', trial.Properties.VariableNames)
+            settings.roi_motion_file = string(trial.roi_motion_file(1));
+        end
         extraction = jsonencode({settings.roi_tracker, settings.ncc_min_corr, settings.camshift_min_score, ...
             settings.klt_min_points, settings.klt_max_points, settings.klt_max_error_px, ...
             settings.saturation_mode, settings.spatial_filter, ...
-            settings.median_filter_size, settings.spatial_sigma_px, tracking_interval, trial.roi_boxes{1}});
+            settings.median_filter_size, settings.spatial_sigma_px, tracking_interval, trial.roi_boxes{1}, settings.roi_motion_file});
         failure = unavailable_reason(candidates(index));
         roi_coverage = NaN;
         if strlength(failure) == 0

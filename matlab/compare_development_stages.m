@@ -19,6 +19,11 @@ for count = 1:numel(stages)
     planned_index = find(plan.stages == stage);
     can_promote = can_promote && planned_index == count;
     candidates = development_candidates(stage,inherited);
+    if stage == "tracking" && ismember('roi_motion_file', trials.Properties.VariableNames) ...
+            && all(isfile(string(trials.roi_motion_file)))
+        media = string({candidates.name}) == "mediapipe";
+        candidates(media).unavailable_reason = "";
+    end
     dir_path = fullfile(output_root,stage);
     fprintf('Starting %s (%d candidates)\n',stage,numel(candidates));
     raw = run_benchmark(trials,"development",candidates,dir_path);

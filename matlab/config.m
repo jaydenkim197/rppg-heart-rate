@@ -23,6 +23,7 @@ settings.recommended_duration_s = 60;
 settings.analysis_interval_s = [];
 settings.roi_boxes_px = [];
 settings.roi_tracker = 'fixed';
+settings.roi_motion_file = "";
 settings.ncc_min_corr = 0.65;
 settings.camshift_min_score = 0.5;
 settings.fft_chunk_s = 0;

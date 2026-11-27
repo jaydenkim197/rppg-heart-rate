@@ -76,6 +76,8 @@ switch tracking_mode
         tracker = start_ncc(frame, rects);
     case 'camshift'
         tracker = start_camshift(frame, rects);
+    case 'mediapipe'
+        tracker = load_roi_motion_track(settings.roi_motion_file, frame);
     case {'klt', 'klt_ncc_reacquire'}
         validateattributes(settings.klt_min_points, {'numeric'}, {'scalar','integer','>=',2});
         validateattributes(settings.klt_max_points, {'numeric'}, ...
@@ -130,6 +132,8 @@ while stamp < interval(2)
             if observed && count > 1
                 shift = round(box(1:2) + box(3:4)/2 - tracker.origin);
             end
+        elseif strcmp(tracking_mode, 'mediapipe')
+            [tracker, shift, observed] = sample_roi_motion_track(tracker, stamp);
         elseif ismember(tracking_mode, {'klt', 'klt_ncc_reacquire'})
             [tracker, shift, observed, confidence] = update_klt(tracker, frame, settings);
             tracking_confidence(count) = confidence;
