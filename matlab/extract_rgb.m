@@ -74,6 +74,8 @@ tracking_mode = char(settings.roi_tracker);
 switch tracking_mode
     case 'ncc'
         tracker = start_ncc(frame, rects);
+    case 'camshift'
+        tracker = start_camshift(frame, rects);
     case {'klt', 'klt_ncc_reacquire'}
         validateattributes(settings.klt_min_points, {'numeric'}, {'scalar','integer','>=',2});
         validateattributes(settings.klt_max_points, {'numeric'}, ...
@@ -118,6 +120,15 @@ while stamp < interval(2)
                 tracker.misses = 0;
             else
                 tracker.misses = tracker.misses + 1;
+            end
+        elseif strcmp(tracking_mode, 'camshift')
+            hsv = rgb2hsv(im2single(frame));
+            [box, ~, confidence] = tracker.object(hsv(:,:,1));
+            tracking_confidence(count) = confidence;
+            observed = all(isfinite(box)) && all(box(3:4) > 0) ...
+                && isfinite(confidence) && confidence >= settings.camshift_min_score;
+            if observed && count > 1
+                shift = round(box(1:2) + box(3:4)/2 - tracker.origin);
             end
         elseif ismember(tracking_mode, {'klt', 'klt_ncc_reacquire'})
             [tracker, shift, observed, confidence] = update_klt(tracker, frame, settings);
@@ -198,6 +209,16 @@ rgb_data = struct('time_s', time_s(rows), 'raw_rgb', raw_rgb(rows, :, :), ...
     'saturation_fraction', saturation_fraction(rows, :), ...
     'tracking_confidence', tracking_confidence(rows), 'reacquired', reacquired(rows), ...
     'interval_s', interval);
+end
+
+function tracker = start_camshift(frame, rects)
+lower = min(rects(:, 1:2), [], 1);
+upper = max(rects(:, 1:2) + rects(:, 3:4) - 1, [], 1);
+extent = upper-lower+1;
+hsv = rgb2hsv(im2single(frame));
+object = vision.HistogramBasedTracker();
+initializeObject(object, hsv(:,:,1), [lower, extent]);
+tracker = struct('object', object, 'origin', lower + extent/2);
 end
 
 function tracker = start_ncc(frame, rects)
