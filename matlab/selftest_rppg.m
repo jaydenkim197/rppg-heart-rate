@@ -96,6 +96,8 @@ catch problem
     assert(strcmp(problem.identifier, 'rppg:InvalidUbfcReference'));
 end
 check_watch_reference();
+check_contact_reference(settings);
+check_klt_tracking(settings, fs);
 fprintf('PASS: eight temporal/FFT candidates, recorded failures, split isolation, UBFC parser.\n');
 
 tracking_file = [tempname, '.avi'];
@@ -212,4 +214,48 @@ trends = evaluate_watch_trends(report.predictions, reference, rules);
 assert(trends.metrics.n_pairs == 3 && trends.metrics.n_reference == 1 && trends.metrics.n_paired == 1);
 assert(trends.metrics.delta_mae_bpm == 3 && trends.metrics.direction_agreement_pct == 100);
 fprintf('PASS: Apple Watch UTC, exact windows, duplicates, missing references, Error SD and trend coverage.\n');
+end
+
+function check_contact_reference(settings)
+% The oximeter's displayed rate must have no influence on the reference.
+t = (0:1/30:30)';
+t = t + 0.004*sin(2*pi*0.17*t);
+t(t >= 12 & t < 12.15) = [];
+reference = table(t, sin(2*pi*1.25*t), 115*ones(size(t)), ...
+    'VariableNames', {'time_s','ppg','bpm'});
+estimate = estimate_ubfc_reference(reference, [0,30], settings);
+assert(estimate.status == "ok" && abs(estimate.bpm - 75) < 1);
+assert(estimate.max_gap_s > 0.1 && sum(t < 30) == estimate.n_samples);
+shorter = reference(reference.time_s < 14 | reference.time_s > 15, :);
+estimate = estimate_ubfc_reference(shorter, [0,30], settings);
+assert(estimate.status == "reference_gap_too_long" && isnan(estimate.bpm));
+reference.ppg(:) = 0.5;
+estimate = estimate_ubfc_reference(reference, [0,30], settings);
+assert(estimate.status == "flat_reference" && isnan(estimate.bpm));
+fprintf('PASS: irregular contact PPG, explicit gaps and independence from sensor HR.\n');
+end
+
+function check_klt_tracking(settings, fs)
+video_file = [tempname, '.avi'];
+cleanup = onCleanup(@() delete(video_file));
+stream = RandStream('mt19937ar', 'Seed', 7);
+frame = repmat(uint8(randi(stream, [45,210], 96, 120)), 1, 1, 3);
+writer = VideoWriter(video_file, 'Uncompressed AVI');
+writer.FrameRate = fs;
+open(writer);
+for index = 1:12
+    if index <= 8
+        writeVideo(writer, circshift(frame, [0, 3*(index > 4), 0]));
+    else
+        writeVideo(writer, zeros(size(frame), 'like', frame));
+    end
+end
+close(writer);
+settings.roi_tracker = 'klt';
+settings.roi_boxes_px = [42,20,22,12; 26,50,14,14; 74,50,14,14];
+tracked = extract_rgb(video_file, settings);
+assert(all(tracked.roi_valid(1:8,:), 'all'));
+assert(all(tracked.roi_positions(8,1,:) - tracked.roi_positions(1,1,:) == 3, 'all'));
+assert(all(~tracked.roi_valid(9:end,:), 'all') && all(isnan(tracked.raw_rgb(9:end,:,:)), 'all'));
+fprintf('PASS: KLT translation and tracking loss on decoded synthetic video.\n');
 end

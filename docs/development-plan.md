@@ -83,3 +83,10 @@ A, B의 공간 필터, C의 색상 보정, D의 부위별 POS와 pooled POS 기�
 | NCC | Raw 및 Hard | 26/28 | 11.375 | 19.466 |
 
 같은 26개 유효 쌍에서 MAE는 Fixed 13.065 BPM, NCC 11.375 BPM이었다. NCC의 두 실패는 `nonfinite_or_missing_signal`로 남겼다. 공급자의 센서 HR 행을 사용한 개발용 초기 비교다. 접촉 PPG로 산출한 기준의 유효성과 KLT 등 다른 추적기를 확인한 뒤 사전 등록한 기준으로 후보를 비교한다. 개인별 결과와 ROI 매니페스트는 로컬 `results/public-intake/ubfc-development-smoke/`에 보관했다.
+
+### UBFC 접촉 PPG 참조 후보 및 KLT 구현
+
+- `estimate_ubfc_reference`는 시각이 불균일한 접촉 PPG 표본을 그대로 사용한다. 실제 시각에서 선형 추세를 제거하고 MATLAB Signal Processing Toolbox의 Lomb–Scargle 스펙트럼으로 0.7–3.0 Hz의 최대 피크를 구한다. 3 Hz의 한 주기인 1/3초보다 큰 관측 공백은 양쪽 창 경계를 포함해 결측으로 처리한다. 긴 공백, 표본 부족, 평탄 신호, 심박 대역 에너지 부족의 원인을 구분한다. 센서가 표시한 BPM은 참조 산출에서 독립적인 비교 기록이다. [UBFC 제공자 안내](https://sites.google.com/view/ybenezeth/ubfcrppg) · [MATLAB Lomb–Scargle 스펙트럼](https://www.mathworks.com/help/signal/ref/plomb.html)
+- MATLAB에서 공개 개발 28명의 첫 30초 접촉 PPG 참조를 모두 산출했다. 센서 표시 HR 평균과의 절대 차이 중앙값은 2.841 BPM이다. 참조 결과에는 표본 수, 관측 범위, 최대 공백과 대역 에너지 비율을 저장했다. 28명 중 어느 영상도 기준 유사도로 추정기를 선택하는 데 쓰지 않았다.
+- 팀원 후보의 Shi–Tomasi 특징점, `vision.PointTracker`와 역방향 오차 검사를 재사용했다. 현 단계 KLT는 초기 세 ROI를 감싸는 영역에서 최대 80점을 감지하고, 2픽셀 허용 오차 내의 평행이동 추정에 최소 4점을 사용한다. 기존 직사각형 ROI와 픽셀 관측 계약을 유지하며, 점이 부족하면 관측을 실패로 표시한다. 회전·스케일 보정 및 점 재검출은 후속 비교 대상이다. [MATLAB KLT 추적기](https://www.mathworks.com/help/vision/ref/vision.pointtracker-system-object.html)
+- MATLAB `selftest_rppg`에서 불규칙한 합성 PPG의 75 BPM, 긴 공백·평탄 실패, 합성 영상의 KLT 3픽셀 이동과 추적 상실을 확인했다.

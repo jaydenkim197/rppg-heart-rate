@@ -1,5 +1,5 @@
 function rgb_data = extract_rgb(video_file, settings)
-%EXTRACT_RGB Read RGB means and timestamps for three fixed skin rectangles.
+%EXTRACT_RGB Read RGB means and timestamps for three skin rectangles.
 % Coordinates are one-based integer [x, y, width, height] in video pixels.
 
 video = VideoReader(video_file);
@@ -70,10 +70,15 @@ tracking_confidence = NaN(capacity, 1);
 count = 0;
 white = double(intmax(class(frame)));
 tracking_mode = char(settings.roi_tracker);
-if strcmp(tracking_mode, 'ncc')
-    tracker = start_ncc(frame, rects);
-elseif ~strcmp(tracking_mode, 'fixed')
-    error('rppg:UnknownTracker', 'Unsupported ROI tracking mode.');
+switch tracking_mode
+    case 'ncc'
+        tracker = start_ncc(frame, rects);
+    case 'klt'
+        tracker = start_klt(frame, rects, settings);
+    case 'fixed'
+        % Keep initial coordinates.
+    otherwise
+        error('rppg:UnknownTracker', 'Unsupported ROI tracking mode.');
 end
 saturation_mode = char(settings.saturation_mode);
 if ~ismember(saturation_mode, {'raw', 'hard'})
@@ -103,6 +108,9 @@ while stamp < interval(2)
             else
                 tracker.misses = tracker.misses + 1;
             end
+        elseif strcmp(tracking_mode, 'klt')
+            [tracker, shift, observed, confidence] = update_klt(tracker, frame, settings);
+            tracking_confidence(count) = confidence;
         end
         if use_filtered
             filtered_rgb(count, :, :) = NaN;
@@ -202,6 +210,47 @@ correlation(~isfinite(correlation)) = -Inf;
 [confidence, index] = max(correlation(:));
 [y, x] = ind2sub(size(correlation), index);
 shift = lower + [x-1, y-1] - tracker.origin;
+end
+
+function tracker = start_klt(frame, rects, settings)
+validateattributes(settings.klt_min_points, {'numeric'}, {'scalar','integer','>=',2});
+validateattributes(settings.klt_max_points, {'numeric'}, ...
+    {'scalar','integer','>=',settings.klt_min_points});
+validateattributes(settings.klt_max_error_px, {'numeric'}, {'scalar','real','finite','positive'});
+
+lower = min(rects(:, 1:2), [], 1);
+upper = max(rects(:, 1:2) + rects(:, 3:4) - 1, [], 1);
+gray = rgb2gray(frame);
+features = detectMinEigenFeatures(gray, 'ROI', [lower, upper-lower+1]);
+if features.Count < settings.klt_min_points
+    error('rppg:KltFeaturesUnavailable', 'Too few trackable points in the initial ROI hull.');
+end
+features = selectStrongest(features, settings.klt_max_points);
+tracker = struct('tracker', vision.PointTracker('MaxBidirectionalError', settings.klt_max_error_px), ...
+    'origin', features.Location, 'active', true(features.Count, 1));
+initialize(tracker.tracker, tracker.origin, gray);
+end
+
+function [tracker, shift, observed, confidence] = update_klt(tracker, frame, settings)
+shift = [0, 0];
+observed = false;
+confidence = 0;
+if nnz(tracker.active) < settings.klt_min_points
+    return
+end
+[points, found] = tracker.tracker(rgb2gray(frame));
+tracker.active = tracker.active & found & all(isfinite(points), 2);
+if nnz(tracker.active) < settings.klt_min_points
+    return
+end
+displacement = points(tracker.active, :) - tracker.origin(tracker.active, :);
+center = median(displacement, 1);
+inliers = vecnorm(displacement-center, 2, 2) <= settings.klt_max_error_px;
+confidence = nnz(inliers) / size(tracker.origin, 1);
+observed = nnz(inliers) >= settings.klt_min_points;
+if observed
+    shift = round(median(displacement(inliers, :), 1));
+end
 end
 
 function filtered = filter_frame(frame, settings)
