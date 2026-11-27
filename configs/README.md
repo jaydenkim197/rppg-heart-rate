@@ -28,8 +28,11 @@ trends = evaluate_watch_trends(summary.predictions, reference, rules);
 외장 원본을 읽어 생성한 영상 매핑 CSV와 Apple Health 내보내기 ZIP을 이용해 로컬 양식을 준비할 수 있다. `tools/extract_watch_hr.py`는 영상 시간에 겹치는 워치 기록만 내보내고, 시도별 착용자를 촬영 순서에서 연결한다. 착용자 교대의 순간은 관측되지 않았으므로 `wearer_blocks.csv`의 시작과 끝은 해당 참가자 영상의 범위다. 원본 HealthData XML은 압축을 푼 파일로 쓰지 않는다.
 
 ```powershell
-python tools/extract_watch_hr.py "<영상 매핑 CSV>" "<Apple Health ZIP>" "results/field-intake"
+python tools/intake_field_videos.py "<원본 폴더>" "results/field-intake/workspace-media"
+python tools/extract_watch_hr.py "results/field-intake/workspace-media/videos.csv" "<Apple Health ZIP>" "results/field-intake"
 ```
+
+영상 인수는 QuickTime 시각과 프레임별 표시 타임스탬프를 기록한다. 원본 중복 검사가 별도로 필요한 경우 인수 명령에 `--sha256`을 추가한다. MATLAB의 `tools/check_field_video_decode.m`은 분석 창의 시작·중간·끝 부근에서 디코딩을 점검한다.
 
 MATLAB에서 `prepare_field_reference("results/field-intake")`를 실행하면 `watch_reference.csv`와 `experiments_aligned.csv`를 작성한다. 카메라·워치 시계 오차 근거가 비어 있으면 명목 UTC 기준 커버리지와 초안 평균을 `nominal_gt_bpm`으로 표시하고, 실험 평가의 `gt_bpm` 칸은 비워 둔다. 촬영자가 두 시계가 일치했다고 확인한 경우 `ConfirmMatchingClocks=true`로 실행하여 60초 절대 BPM 비교를 사용한다. 이 경우 상태는 `ok_operator_confirmed_clock`이고 수치화하지 못한 시계 오차는 공란으로 남는다.
 
