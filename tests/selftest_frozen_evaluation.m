@@ -89,4 +89,20 @@ again = run_frozen_evaluation(trials,freeze_path,destination);
 assert(isequaln(result.distance_gates,again.distance_gates));
 assert(isequal([previous.datenum],[dir(fullfile(destination,'checkpoints','*.mat')).datenum]));
 fprintf('PASS: frozen manifest, spatial sharing equivalence, B fallback, 216+54 rows, reports and resume.\n');
+
+independent_root = fullfile(output_root,'synthetic-ubfc');
+mkdir(independent_root);
+number = (1:14)';
+seed = table("held"+number,"subject"+number,"fixture_"+number+".avi", ...
+    'VariableNames',{'video_id','subject_id','video_file'});
+independent_manifest = fullfile(independent_root,'synthetic_independent.csv');
+writetable(seed,independent_manifest);
+independent = prepare_frozen_trials(independent_manifest,"independent",freeze_path, ...
+    ReferenceRoot=independent_root,RoiCsv=fullfile(output_root,'synthetic_rois.csv'));
+independent_output = fullfile(output_root,'synthetic_independent_report');
+heldout = run_frozen_evaluation(independent,freeze_path,independent_output);
+assert(height(heldout.independent) == 5 && ~any(heldout.independent.passed));
+assert(height(heldout.d_vs_pos.pairs) == 42 && ~any(heldout.d_vs_pos.pairs.paired));
+assert(height(readtable(fullfile(independent_output,'predictions.csv'))) == 168);
+fprintf('PASS: independent metrics bypass ranking, retain failure rows and report per-method gates.\n');
 end
