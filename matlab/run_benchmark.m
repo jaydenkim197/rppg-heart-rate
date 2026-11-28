@@ -1,8 +1,17 @@
-function report = run_benchmark(trials, split, candidates, output_dir)
+function report = run_benchmark(trials, split, candidates, output_dir, options)
 %RUN_BENCHMARK Compare pre-registered ROI and signal candidates on the same intervals.
 % trials is a table with subject_id, video_id, split, video_file, start_s,
 % end_s, roi_boxes (3x4 matrix per cell) and gt_bpm. An absent reference
 % is represented by NaN. Use only locally authorized data and output paths.
+
+arguments
+    trials table
+    split
+    candidates struct
+    output_dir = ""
+    options.ShareSpatialExtraction (1,1) logical = false
+    options.TraceFirstA (1,1) logical = false
+end
 
 required = {'subject_id', 'video_id', 'split', 'video_file', 'start_s', 'end_s', ...
     'roi_boxes', 'gt_bpm'};
@@ -79,6 +88,14 @@ for index = 1:numel(candidates)
     end
 end
 
+% An extraction with B's filter already retains the original measurements.
+% A, C, D and POS consume those measurements independently of filtered RGB.
+share_candidate = find(methods == "B", 1);
+if ~options.ShareSpatialExtraction || split == "development" || isempty(share_candidate) ...
+        || ~can_share_spatial(candidate_settings, share_candidate)
+    share_candidate = [];
+end
+trace = [];
 predictions = table();
 has_tracking_interval = all(ismember({'tracking_start_s','tracking_end_s'}, requested.Properties.VariableNames));
 cache = containers.Map('KeyType','char','ValueType','any');
@@ -105,28 +122,19 @@ for trial_index = 1:height(requested)
                 && ismember('roi_motion_file', trial.Properties.VariableNames)
             settings.roi_motion_file = string(trial.roi_motion_file(1));
         end
-        extraction = jsonencode({settings.roi_tracker, settings.ncc_min_corr, settings.camshift_min_score, ...
-            settings.klt_min_points, settings.klt_max_points, settings.klt_max_error_px, ...
-            settings.saturation_mode, settings.spatial_filter, ...
-            settings.median_filter_size, settings.spatial_sigma_px, tracking_interval, trial.roi_boxes{1}, settings.roi_motion_file});
         failure = unavailable_reason(candidates(index));
         roi_coverage = NaN;
         if strlength(failure) == 0
-            if ~isKey(cache, extraction)
-                settings.roi_boxes_px = trial.roi_boxes{1};
-                settings.analysis_interval_s = tracking_interval;
-                cached = struct('rgb', [], 'failure', "");
-                try
-                    cached.rgb = extract_rgb(video_file, settings);
-                catch problem
-                    cached.failure = string(problem.identifier);
-                    if strlength(cached.failure) == 0
-                        cached.failure = "video_or_roi_error";
-                    end
-                end
-                cache(extraction) = cached;
+            extraction_settings = settings;
+            if ~isempty(share_candidate)
+                extraction_settings.spatial_filter = candidate_settings(share_candidate).spatial_filter;
+                extraction_settings.median_filter_size = candidate_settings(share_candidate).median_filter_size;
+                extraction_settings.spatial_sigma_px = candidate_settings(share_candidate).spatial_sigma_px;
             end
-            cached = cache(extraction);
+            cached = run_extraction(cache, video_file, trial.roi_boxes{1}, tracking_interval, extraction_settings);
+            if strlength(cached.failure) > 0 && ~isempty(share_candidate) && method ~= "B"
+                cached = run_extraction(cache, video_file, trial.roi_boxes{1}, tracking_interval, settings);
+            end
             failure = cached.failure;
             if strlength(failure) == 0
                 rgb = crop_rgb(cached.rgb, interval);
@@ -142,7 +150,13 @@ for trial_index = 1:height(requested)
         end
         if strlength(failure) == 0
             signal = apply_method(rgb, methods(index), settings);
-            estimate = estimate_interval(signal, settings, interval);
+            if options.TraceFirstA && trial_index == 1 && methods(index) == "A"
+                [estimate, example] = estimate_interval(signal, settings, interval);
+                trace = struct('rgb_data', rgb, 'estimate', example, ...
+                    'fft_chunk_s', settings.fft_chunk_s);
+            else
+                estimate = estimate_interval(signal, settings, interval);
+            end
         else
             estimate = failed_estimate(failure);
         end
@@ -161,7 +175,10 @@ for trial_index = 1:height(requested)
     end
 end
 report = evaluate_results(predictions, requested(:, [key, {'gt_bpm'}]), base);
-if nargin >= 4 && strlength(string(output_dir)) > 0
+if options.TraceFirstA
+    report.trace = trace;
+end
+if strlength(string(output_dir)) > 0
     if ~isfolder(output_dir)
         mkdir(output_dir);
     end
@@ -171,6 +188,43 @@ if nargin >= 4 && strlength(string(output_dir)) > 0
         fullfile(output_dir, 'trials.json'));
     record = struct('split', split, 'candidates', candidates, 'effective_settings', candidate_settings);
     writelines(string(jsonencode(record, 'PrettyPrint', true)), fullfile(output_dir, 'settings.json'));
+end
+end
+
+function can_share = can_share_spatial(settings, spatial)
+extraction_fields = {'roi_tracker','ncc_min_corr','camshift_min_score','klt_min_points', ...
+    'klt_max_points','klt_max_error_px','saturation_mode','roi_motion_file'};
+can_share = ~strcmp(settings(spatial).spatial_filter, 'none');
+other = setdiff(1:numel(settings),spatial);
+for index = other
+    if ~strcmp(settings(index).spatial_filter, 'none') ...
+            || ~all(cellfun(@(field) isequaln(settings(index).(field), settings(spatial).(field)), extraction_fields))
+        can_share = false;
+        return
+    end
+end
+end
+
+function cached = run_extraction(cache, video_file, boxes, interval, settings)
+key = jsonencode({settings.roi_tracker, settings.ncc_min_corr, settings.camshift_min_score, ...
+    settings.klt_min_points, settings.klt_max_points, settings.klt_max_error_px, ...
+    settings.saturation_mode, settings.spatial_filter, settings.median_filter_size, ...
+    settings.spatial_sigma_px, interval, boxes, settings.roi_motion_file});
+if ~isKey(cache, key)
+    settings.roi_boxes_px = boxes;
+    settings.analysis_interval_s = interval;
+    cached = struct('rgb', [], 'failure', "");
+    try
+        cached.rgb = extract_rgb(video_file, settings);
+    catch problem
+        cached.failure = string(problem.identifier);
+        if strlength(cached.failure) == 0
+            cached.failure = "video_or_roi_error";
+        end
+    end
+    cache(key) = cached;
+else
+    cached = cache(key);
 end
 end
 
@@ -198,10 +252,12 @@ end
 rgb.interval_s = interval;
 end
 
-function result = estimate_interval(signal, settings, interval)
+function [result, example] = estimate_interval(signal, settings, interval)
+example = struct('filtered', [], 'power', []);
 width = settings.fft_chunk_s;
 if width == 0
     result = estimate_hr(signal, settings);
+    example = result;
     return
 end
 if width <= 0 || width > diff(interval)
@@ -222,6 +278,9 @@ for index = 1:numel(starts)
     local.time_s = signal.time_s(inside);
     local.values = signal.values(inside,:);
     result = estimate_hr(local, settings);
+    if index == 1
+        example = result;
+    end
     if strcmp(result.status, 'ok')
         values(index) = result.predicted_bpm;
         quality(index) = result.quality;

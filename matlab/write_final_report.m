@@ -177,7 +177,11 @@ if ~isempty(est.filtered)
 else
     text(ax, 0.5, 0.5, 'Processed signal unavailable', 'HorizontalAlignment', 'center');
 end
-title(ax, 'Processed signal');
+if isfield(example,'fft_chunk_s') && example.fft_chunk_s > 0
+    title(ax, 'Processed signal (first FFT chunk)');
+else
+    title(ax, 'Processed signal');
+end
 xlabel(ax, 'Time (s)');
 grid(ax, 'on');
 ax = nexttile(layout);
@@ -186,7 +190,11 @@ if ~isempty(est.power)
 else
     text(ax, 0.5, 0.5, 'Spectrum unavailable', 'HorizontalAlignment', 'center');
 end
-title(ax, 'FFT spectrum');
+if isfield(example,'fft_chunk_s') && example.fft_chunk_s > 0
+    title(ax, 'FFT spectrum (first FFT chunk)');
+else
+    title(ax, 'FFT spectrum');
+end
 xlabel(ax, 'Frequency (Hz)');
 ylabel(ax, 'Power');
 grid(ax, 'on');
