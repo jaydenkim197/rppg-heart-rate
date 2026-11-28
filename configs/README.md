@@ -57,3 +57,11 @@ MATLAB에서 `prepare_field_reference("results/field-intake")`를 실행하면 `
 공식 MATLAB 구현 `7b6b5b579a7cd25acae6bcabe93f8dfb78040215`의 Windows x64 바이너리를 MATLAB R2026b에서 확인했다. 합성 96×128 RGB의 FHOG 계산은 성공했다. `mexResize`는 동봉 OpenCV 2.4.2 DLL을 검색 경로에 추가한 뒤에도 `MATLAB:mex:ErrInvalidMEXFile`을 반환했다. 수정 없이 실행한 `trackerMain`도 첫 `getSubwindow` 호출에서 중단됐다. 의존성 검사에서 두 OpenCV DLL은 레거시 `tbb.dll`을 가져온다. 공식 아카이브에는 이 DLL이 없고 MATLAB 설치에는 `tbb12.dll`이 있었다. 현재 MATLAB에서 선택된 C++ MEX 컴파일러는 0개였다. [STAPLE 공식 구현](https://github.com/bertinetto/staple/tree/7b6b5b579a7cd25acae6bcabe93f8dfb78040215) · [Intel TBB 호환성 안내](https://cdrdv2-public.intel.com/772619/onetbb_get-started-guide_2021.6-772619.pdf)
 
 호환되는 Windows x64 TBB 런타임을 확보하거나, 지원되는 C++ MEX 컴파일러로 DSST의 `mexResize` 소스를 호환 OpenCV에 재빌드한 후 추적을 재검증한다. 후보 등록 전 프레임을 디스크에 쓰지 않는 어댑터에서 첫 프레임 ROI 바운딩 박스, MATLAB 행·열 순서 변환 및 원본 프레임 좌표 복귀를 확인한다. 현재 상태는 STAPLE 추적 비교 미실행이다. [업스트림 빌드 안내](https://github.com/bertinetto/staple/blob/7b6b5b579a7cd25acae6bcabe93f8dfb78040215/README.md#faq)
+
+### 호환 경로 재확인
+
+설치된 MATLAB R2026b에는 OpenCV 4.7.0과 TBB12가 있었고, OpenCV 2.4.2 링크를 요구하는 배포 바이너리는 이 상태에서 실행되지 않았다. 설치된 C++ MEX 컴파일러 및 WSL 배포판이 없어 이 환경에서 MEX 재빌드를 실행하지 못했다. [STAPLE 빌드 안내](https://github.com/bertinetto/staple/blob/7b6b5b579a7cd25acae6bcabe93f8dfb78040215/README.md#faq)
+
+DSST 리사이즈의 자동 모드는 축소 시 OpenCV `INTER_AREA`를 사용한다. 7×7 `uint8` 영상의 (2,2) 픽셀만 255로 놓고 4×4로 줄이는 합성 검사에서, OpenCV 2.4.2의 픽셀 겹침 가중치로 계산한 좌상단 2×2는 `[47 16; 16 5]`였다. MATLAB R2026b에서 실제 실행한 `imresize`의 `box`와 안티앨리어싱을 끈 `bilinear`는 각각 `[64 0; 0 0]`, `[36 0; 0 0]`을 냈다. [DSST 리사이즈 소스](https://github.com/ml422524/DSST/blob/master/mexResize.cpp#L30-L64) · [OpenCV 2.4.2 구현](https://github.com/opencv/opencv/blob/2.4.2/modules/imgproc/src/imgwarp.cpp)
+
+현재 개발 비교에서 STAPLE은 실행 환경 미확보로 제외한다. 성능 점수는 미측정이다. 후속 비교를 위해서는 호환 런타임 또는 재빌드한 MEX에 대해 리사이즈 결과, 합성 이동 추적 및 ROI 좌표를 먼저 검증해야 한다.
