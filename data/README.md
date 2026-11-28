@@ -24,3 +24,14 @@ foreach ($row in $manifest) {
 ```
 
 [실험 평가 사전 등록](../docs/selection-completion-protocol.md) · [결과 파일 안내](../results/README.md)
+
+이 작업의 로컬 배포 후보는 `data/field-video-only.zip`이다. 압축 목록은 MOV 54개이며 각 멤버가 기존 무결성 목록의 SHA-256과 일치했다. `results/field-intake/team-video-archive.sha256`은 ZIP 자체의 해시다. 업로드와 권한 부여는 참가자 동의가 확인된 팀 저장소에서 진행한다.
+
+| 재현 파일 | 상대 위치 |
+|---|---|
+| 영상별 키·거리·반복과 공유가 승인된 비식별 기준 | `results/field-intake/team-field-manifest.csv` |
+| 영상 원본 해시와 크기 | `results/field-intake/team-video-checksums.csv` |
+| ROI 좌표계 표시 크기와 상대 PTS 경로 | `results/field-intake/team-native-metadata.csv` |
+| PTS 목록 | `results/field-intake/workspace-media/frame_pts/` |
+
+영상과 PTS 측 자료만 재현용 구조로 전달하면 팀원이 Apple Health 내보내기 ZIP 없이 등록된 실험을 실행할 수 있다. 영상, 개별 BPM, ROI 등록값 및 시도 결과의 공유는 해당 참가자의 동의 범위를 따른다.

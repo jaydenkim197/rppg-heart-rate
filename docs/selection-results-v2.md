@@ -30,3 +30,7 @@
 - Soft/Temporal Masking, 복합 SQI, 짧은 추적 결측 보간과 연속 구간 분리는 합의 문서의 후속 후보로 유지한다. 본 라운드의 고정 설정에는 새로 추가하지 않았다. 1/5/10/20/30초 변화 비교, 가림·동작·회복, 실제 변화에 대한 반응 지연은 추가 동작 자료와 기준 시각이 필요하다.
 
 세부 결과, 실패 행, 동일 시도 짝과 설정은 로컬 `results/selection-v2/signal-sequence/`, `results/selection-v2/long-fft-diagnostic/`에 두었다. 공개 독립과 자체 영상은 기술 선정에 사용하지 않았다.
+
+## 추적 고정 후 B 공간 필터 주 비교
+
+같은 KLT+NCC·Raw·Butterworth 2차·전체 창·Hamming·4배 Zero Padding으로 28개 영상, 84개 창에 여섯 후보를 적용해 504행을 확보했다. 다섯 공간 필터 모두 27/28 유효, 23개 기준 쌍, MAE 12.83 BPM이었다. Median·Mean·Gaussian·Bilateral은 점수 0.672, 오차 SD RMS 7.46 BPM, ΔBPM MAE 5.99 BPM으로 일치했다. Wiener는 0.663, 7.65 BPM, 6.38 BPM이었다. 미적용은 연구 대조군이다. 다섯 후보가 모두 통과하고 차이가 0.02 이내라 5×5 대체 실험 없이 미리 정한 추가 창에서 보완한다.

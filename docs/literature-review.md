@@ -103,3 +103,15 @@ ProPOS, DistancePPG, POS 원 논문 및 Dynamic ROI 논문의 원저자 GitHub�
 4. McDuff 등의 iPhys (ID 24), Harris (ID 5), Elgendi 등의 SQI (ID 22) — MATLAB 검증 및 피크 품질.
 
 관련 개발 기준: [개발 계획](development-plan.md), [시스템 구조](architecture.md), [실험 프로토콜](experiment-protocol.md), [프로젝트 지침](../AGENTS.md).
+
+## 6. 개발 비교와 구현의 대응
+
+| 구현 요소 | 이론과 구현 | 실험에서 확인한 범위 |
+|---|---|---|
+| ROI 추적 | Lucas–Kanade 방식으로 특징점 이동을 구한다. 현재 프레임의 KLT가 상실되면 첫 ROI 묶음의 NCC 템플릿을 찾아 특징점을 다시 만든다. `extract_rgb.m`은 유효 영역의 RGB, 위치, 포화율과 프레임 시각을 같은 레코드에 기록한다. | 합성 위치 복구와 무늬 가림 오탐을 따로 측정했다. [재검출 검증](tracking-recovery-diagnostic.md) |
+| 시간축과 주파수 | 강의 10-1의 1차원 DFT와 표본화, 10-2 및 11-1의 전달함수 곱을 `estimate_hr.m`에 적용했다. 실제 시각을 사용하고 필요한 경우 짧은 간격을 선형 보간한다. Butterworth형 대역 응답을 주파수 영역에서 곱한 뒤 Hamming 윈도우와 FFT를 적용한다. 4배 Zero Padding은 피크 탐색 격자를 촘촘히 한다. 실제 분석 창의 독립 주파수 분해능은 관측 길이가 정한다. | 0.7–3.0 Hz 대역, 양쪽 15초 변화 창과 전체 창을 비교했다. [Harris](https://doi.org/10.1109/PROC.1978.10837) |
+| 공간 필터 | 강의 6-1의 국소 순위통계·평균, 12-1의 지역 잡음 추정과 연결한다. B는 RGB 프레임별로 공간 처리를 적용해 같은 피부 ROI를 평균한다. 경계 인접 픽셀에서 일관되게 전체 프레임 기준 필터 출력을 사용한다. | 공동 추적과 시간 처리를 고정한 후 다섯 필터와 미적용 대조를 비교했다. |
+| 색상 정규화 | 강의의 RGB 채널·대비 변환에 연결한다. C의 `G/(R+G+B)`는 세 채널에 같은 이득이 곱해져도 비율을 유지한다. 채널별 색온도 변화, 포화, 그림자를 모두 제거하는 모델은 아니다. | RGB Sum과 Log의 개발 점수는 동점이었다. 뒤 구간의 일관성 미달을 함께 기록했다. |
+| POS와 영역 결합 | `apply_method.m`은 구간별 RGB 평균으로 정규화하고 POS의 두 직교 색상 조합을 표준편차 비율로 묶는다. pooled POS는 RGB를 먼저 결합한다. D는 영역별 추정 후 분리 피크로 품질이 낮은 ROI를 걸러 내고 BPM을 품질 가중 평균한다. 영역 품질 결합의 선행 예와 같은 대상에서 비교하되 구현의 결합 단위는 따로 명시한다. | 개발에서는 기본 POS의 MAE가 낮았고 D의 일관성과 변화량 지표가 앞섰다. [Wang 등](https://doi.org/10.1109/TBME.2016.2609282) · [DistancePPG](https://doi.org/10.1364/BOE.6.001565) |
+
+공개 640×480/30 fps 웹캠 자료와 자체 4K/60 fps iPhone 자료의 촬영 조건과 기준 장치가 다르므로 개발 결과를 현장 일반화 근거로 바로 쓰지 않는다. [UBFC 데이터 제공자](https://sites.google.com/view/ybenezeth/ubfcrppg) · [개발 비교 v2](selection-results-v2.md)
