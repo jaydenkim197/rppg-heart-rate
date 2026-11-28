@@ -200,6 +200,41 @@ def verify(folder, stage, development_subjects):
     return len(rows), state, eligible, whole_refs, paired_refs
 
 
+def verify_selection(manifest_path, records):
+    # First element is the qualified incumbent where applicable.
+    priority = {
+        "peak": ["max_bin", "parabolic", "zero_padding_4"],
+        "color": ["rgb_sum", "log", "temporal", "difference", "saturation"],
+        "pos": ["1.6", "1", "2", "3"],
+        "sqi": ["energy_ratio", "kurtosis", "cross_correlation", "relative_peaks"],
+        "fusion": ["weighted", "equal", "consensus", "best", "spectral"],
+    }
+    stages = manifest_path.parent
+    chosen = json.loads(manifest_path.read_text(encoding="utf-8-sig"))["selected"]
+    for stage, selection in chosen.items():
+        folder = stages / stage
+        _, main_state, main_eligible, _, _ = records[folder]
+        assert main_state in {"selected", "tie"}
+        allowed = [name for score, name in main_eligible if main_eligible[0][0] - score <= 0.02]
+        if main_state == "selected":
+            expected_name, expected_basis = allowed[0], "primary"
+        else:
+            supplementary = folder / "supplementary"
+            _, extra_state, extra_eligible, _, _ = records[supplementary]
+            candidates = read_csv(supplementary / "ranking.csv")
+            assert set(allowed) == {row["candidate"] for row in candidates}
+            if extra_state == "selected" and len(extra_eligible) >= 2:
+                expected_name, expected_basis = extra_eligible[0][1], "supplementary"
+            else:
+                expected_name = next(name for name in priority[stage] if name in allowed)
+                expected_basis = "predeclared_tie_rule"
+        assert (selection["name"], selection["basis"]) == (expected_name, expected_basis), selection
+        metadata = json.loads((folder / "settings.json").read_text(encoding="utf-8-sig"))
+        matching = [row for row in metadata["candidates"] if row["name"] == expected_name]
+        assert len(matching) == 1 and selection["settings"] == matching[0]["overrides"]
+    print(f"{len(chosen)} saved selection decisions verified")
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("results_root", type=Path)
@@ -210,6 +245,7 @@ def main():
         development_subjects = {r["subjects"] for r in read_csv(args.split_manifest) if r["split"] == "development"}
         assert len(development_subjects) == 28
     counts = []
+    records = {}
     for file in sorted(args.results_root.rglob("ranking.csv")):
         folder = file.parent
         if not (folder / "settings.json").is_file() or not (folder / "predictions.csv").is_file():
@@ -217,12 +253,15 @@ def main():
         stage = folder.parent.name if folder.name == "supplementary" else folder.name
         if stage.endswith("_x_fusion") or stage.endswith("_x_fft"):
             stage = "interactions"
-        count, state, eligible, whole_refs, paired_refs = verify(folder, stage, development_subjects)
+        records[folder] = verify(folder, stage, development_subjects)
+        count, state, eligible, whole_refs, paired_refs = records[folder]
         leader = eligible[0][1] if eligible else ""
         counts.append(count)
         print(f"{folder.relative_to(args.results_root)} {count} rows {state} {leader} refs {whole_refs}/{paired_refs}")
     assert counts, "No complete development ranking groups found"
     print(f"{len(counts)} rankings and {sum(counts)} predictions verified")
+    for selection in sorted(args.results_root.rglob("selected.json")):
+        verify_selection(selection, records)
 
 
 if __name__ == "__main__":
