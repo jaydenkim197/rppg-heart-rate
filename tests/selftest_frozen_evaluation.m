@@ -63,7 +63,19 @@ assert(result.predictions.valid_estimate(result.predictions.method == "A"));
 assert(~result.predictions.valid_estimate(result.predictions.method == "B"));
 
 destination = fullfile(output_root,'synthetic_report');
-result = run_frozen_evaluation(trials,freeze_path,destination);
+worker = run_frozen_evaluation(trials,freeze_path,destination,Worker=1,Workers=2);
+assert(isequal(worker.completed_indices,1:2:54));
+assert(length(dir(fullfile(destination,'checkpoints','*.mat'))) == 27);
+assert(~isfile(fullfile(destination,'final_predictions.csv')));
+try
+    run_frozen_evaluation(trials,freeze_path,destination,AggregateOnly=true);
+    error('rppg:ExpectedMissingCheckpoint','Merge-only invocation filled an unfinished shard.');
+catch missing
+    assert(strcmp(missing.identifier,'rppg:MissingFrozenCheckpoint'));
+end
+worker = run_frozen_evaluation(trials,freeze_path,destination,Worker=2,Workers=2);
+assert(isequal(worker.completed_indices,2:2:54));
+result = run_frozen_evaluation(trials,freeze_path,destination,AggregateOnly=true);
 assert(sum(result.primary.metrics.n_total(isnan(result.primary.metrics.distance_m))) == 216);
 assert(height(readtable(fullfile(destination,'pooled_pos_predictions.csv'))) == 54);
 assert(height(result.d_vs_pos.pairs) == 54 && sum(result.d_vs_pos.pairs.paired) == 1);

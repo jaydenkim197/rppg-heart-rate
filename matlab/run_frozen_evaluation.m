@@ -1,6 +1,20 @@
-function report = run_frozen_evaluation(trials, freeze_path, output_dir)
+function report = run_frozen_evaluation(trials, freeze_path, output_dir, options)
 %RUN_FROZEN_EVALUATION Evaluate a pinned A-D pipeline and its separate pooled POS control.
 % The caller must supply a prepared final or independent manifest and prior freeze.
+% Workers use the same full manifest, with a distinct 1-based Worker index.
+% Use AggregateOnly after all workers finish to require existing checkpoints.
+
+arguments
+    trials table
+    freeze_path (1,1) string
+    output_dir (1,1) string
+    options.Worker (1,1) double {mustBeInteger,mustBePositive} = 1
+    options.Workers (1,1) double {mustBeInteger,mustBePositive} = 1
+    options.AggregateOnly (1,1) logical = false
+end
+if options.Worker > options.Workers || (options.AggregateOnly && options.Workers ~= 1)
+    error('rppg:InvalidFrozenWorker','Use a worker index within the worker count; aggregate from one worker.');
+end
 
 freeze_json = fileread(freeze_path);
 freeze = jsondecode(freeze_json);
@@ -31,12 +45,16 @@ if ~isfolder(output_dir)
     mkdir(output_dir);
 end
 pin_path = fullfile(output_dir, 'freeze.json');
-if isfile(pin_path)
-    if ~strcmp(fileread(pin_path), freeze_json)
-        error('rppg:FreezeChanged','Existing output is pinned to a different freeze.');
+if ~isfile(pin_path)
+    candidate_pin = string(tempname(output_dir))+".json";
+    copyfile(freeze_path,candidate_pin);
+    movefile(candidate_pin,pin_path);
+    if isfile(candidate_pin)
+        delete(candidate_pin);
     end
-else
-    copyfile(freeze_path, pin_path);
+end
+if ~isfile(pin_path) || ~strcmp(fileread(pin_path), freeze_json)
+    error('rppg:FreezeChanged','Existing output is pinned to a different freeze.');
 end
 checkpoint_dir = fullfile(output_dir,'checkpoints');
 if ~isfolder(checkpoint_dir)
@@ -48,7 +66,8 @@ example = [];
 videos = unique(trials.video_id,'stable');
 roi_fail = ismember('roi_status',trials.Properties.VariableNames);
 record = struct('freeze',freeze_json,'runtime',version,'share_spatial',true);
-for index = 1:numel(videos)
+assigned = options.Worker:options.Workers:numel(videos);
+for index = assigned
     local_trials = trials(trials.video_id == videos(index),:);
     path = fullfile(checkpoint_dir,sprintf('%03d.mat',index));
     fingerprint = input_fingerprint(local_trials);
@@ -65,6 +84,8 @@ for index = 1:numel(videos)
             && height(cached.part.predictions) == height(local_trials)*5
         part = cached.part;
         action = "checkpoint";
+    elseif options.AggregateOnly
+        error('rppg:MissingFrozenCheckpoint','Checkpoint %d is missing or does not match the freeze.',index);
     else
         if roi_fail && any(string(local_trials.roi_status) ~= "ok")
             part = failed_roi_predictions(local_trials, candidates, keys, base);
@@ -82,8 +103,14 @@ for index = 1:numel(videos)
     if index == 1 && isfield(part,'trace')
         example = part.trace;
     end
-    predictions = [predictions; part.predictions]; %#ok<AGROW>
+    if options.Workers == 1
+        predictions = [predictions; part.predictions]; %#ok<AGROW>
+    end
     fprintf('%s %d/%d %s, elapsed %.1f s\n',split,index,numel(videos),action,toc(started));
+end
+if options.Workers > 1
+    report = struct('worker',options.Worker,'workers',options.Workers,'completed_indices',assigned);
+    return
 end
 trials_output = removevars(trials,'roi_boxes');
 writetable(trials_output,fullfile(output_dir,'evaluated_manifest.csv'));
