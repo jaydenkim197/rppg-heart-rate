@@ -11,6 +11,7 @@ arguments
     options.VideoRoot (1,1) string = ""
     options.RoiCsv (1,1) string = ""
     options.ReferenceRoot (1,1) string = ""
+    options.MetadataCsv (1,1) string = ""
 end
 freeze = jsondecode(fileread(freeze_path));
 if ~isfield(freeze,'roi_seed') || ~isfield(freeze.roi_seed,'mode')
@@ -41,6 +42,9 @@ if strlength(root) == 0
 end
 root = absolute_root(root);
 manifest.video_file = resolve_paths(manifest.video_file,root);
+if strlength(options.MetadataCsv) > 0
+    manifest = merge_metadata(manifest,options.MetadataCsv);
+end
 for sidecar = ["frame_pts_csv","roi_motion_file"]
     if ismember(sidecar,manifest.Properties.VariableNames)
         manifest.(sidecar) = resolve_paths(manifest.(sidecar),root);
@@ -86,6 +90,25 @@ else
         trials.roi_boxes(rows) = repmat({boxes},nnz(rows),1);
         trials.roi_status(rows) = status;
     end
+end
+end
+
+function manifest = merge_metadata(manifest,metadata_path)
+metadata = readtable(metadata_path,'TextType','string','Delimiter',',');
+fields = {'video_id','frame_pts_csv','display_width','display_height'};
+if ~all(ismember(fields,metadata.Properties.VariableNames)) ...
+        || height(metadata) ~= numel(unique(string(metadata.video_id)))
+    error('rppg:InvalidFrozenMetadata','Expected unique video IDs and their native PTS and display metadata.');
+end
+[found,index] = ismember(manifest.video_id,string(metadata.video_id));
+if ~all(found)
+    error('rppg:MissingFrozenMetadata','Every attempted video needs its original intake metadata.');
+end
+for field = fields(2:end)
+    manifest.(field{1}) = metadata.(field{1})(index);
+end
+if ismember('sha256',metadata.Properties.VariableNames)
+    manifest.sha256 = metadata.sha256(index);
 end
 end
 

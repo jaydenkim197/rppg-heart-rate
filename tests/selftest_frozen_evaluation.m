@@ -24,7 +24,7 @@ writer = VideoWriter(video,'Uncompressed AVI');
 writer.FrameRate = 15;
 open(writer);
 [x,y] = meshgrid(1:48,1:40);
-for index = 1:900
+for index = 1:915
     stamp = (index-1)/writer.FrameRate;
     pulse = sin(2*pi*1.25*stamp);
     frame = uint8(cat(3,110+mod(x,5)+pulse,130+mod(y,4)+8*pulse, ...
@@ -41,6 +41,10 @@ manifest = table("T"+number,"S"+repelem(repmat((1:3)',3,1),6), ...
     'VariableNames',{'video_id','subject_id','video_file','distance_m','trial','start_s','end_s','gt_bpm'});
 manifest.video_file(1) = "fixture.avi";
 manifest.gt_bpm(1) = 75;
+manifest.frame_pts_csv = repmat("synthetic_frame_pts.csv",54,1);
+frame_index = (1:915)';
+pts_s = (frame_index-1)/writer.FrameRate;
+writetable(table(frame_index,pts_s),fullfile(output_root,'synthetic_frame_pts.csv'));
 writetable(manifest,fullfile(output_root,'synthetic_manifest.csv'));
 manual = table("T1",string(jsonencode(boxes)),'VariableNames',{'video_id','roi_boxes_json'});
 writetable(manual,fullfile(output_root,'synthetic_rois.csv'));

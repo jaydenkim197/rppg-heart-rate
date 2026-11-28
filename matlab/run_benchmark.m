@@ -11,6 +11,7 @@ arguments
     output_dir = ""
     options.ShareSpatialExtraction (1,1) logical = false
     options.TraceFirstA (1,1) logical = false
+    options.ValidateNativePts (1,1) logical = false
 end
 
 required = {'subject_id', 'video_id', 'split', 'video_file', 'start_s', 'end_s', ...
@@ -111,6 +112,14 @@ for trial_index = 1:height(requested)
         end
     end
     video_file = string(trial.video_file(1));
+    pts_file = "";
+    if options.ValidateNativePts
+        if ~ismember('frame_pts_csv',trial.Properties.VariableNames) ...
+                || ismissing(trial.frame_pts_csv) || strlength(trial.frame_pts_csv) == 0
+            error('rppg:MissingFrozenPts','Use the native MOV PTS sidecar for every final video.');
+        end
+        pts_file = string(trial.frame_pts_csv);
+    end
     if video_file ~= previous_video
         cache = containers.Map('KeyType','char','ValueType','any');
         previous_video = video_file;
@@ -131,9 +140,10 @@ for trial_index = 1:height(requested)
                 extraction_settings.median_filter_size = candidate_settings(share_candidate).median_filter_size;
                 extraction_settings.spatial_sigma_px = candidate_settings(share_candidate).spatial_sigma_px;
             end
-            cached = run_extraction(cache, video_file, trial.roi_boxes{1}, tracking_interval, extraction_settings);
-            if strlength(cached.failure) > 0 && ~isempty(share_candidate) && method ~= "B"
-                cached = run_extraction(cache, video_file, trial.roi_boxes{1}, tracking_interval, settings);
+            cached = run_extraction(cache, video_file, trial.roi_boxes{1}, tracking_interval, extraction_settings, pts_file);
+            if strlength(cached.failure) > 0 && ~isempty(share_candidate) && method ~= "B" ...
+                    && ~ismember(cached.failure,["rppg:DecodedPtsMismatch","rppg:UnusablePtsSidecar"])
+                cached = run_extraction(cache, video_file, trial.roi_boxes{1}, tracking_interval, settings, pts_file);
             end
             failure = cached.failure;
             if strlength(failure) == 0
@@ -205,17 +215,25 @@ for index = other
 end
 end
 
-function cached = run_extraction(cache, video_file, boxes, interval, settings)
+function cached = run_extraction(cache, video_file, boxes, interval, settings, pts_file)
 key = jsonencode({settings.roi_tracker, settings.ncc_min_corr, settings.camshift_min_score, ...
     settings.klt_min_points, settings.klt_max_points, settings.klt_max_error_px, ...
     settings.saturation_mode, settings.spatial_filter, settings.median_filter_size, ...
-    settings.spatial_sigma_px, interval, boxes, settings.roi_motion_file});
+    settings.spatial_sigma_px, interval, boxes, settings.roi_motion_file, pts_file});
 if ~isKey(cache, key)
     settings.roi_boxes_px = boxes;
     settings.analysis_interval_s = interval;
     cached = struct('rgb', [], 'failure', "");
     try
+        if strlength(pts_file) > 0
+            expected = read_native_pts(pts_file,interval);
+        end
         cached.rgb = extract_rgb(video_file, settings);
+        if strlength(pts_file) > 0 && (numel(cached.rgb.time_s) ~= numel(expected) ...
+                || any(abs(cached.rgb.time_s-expected) > 1e-6))
+            cached.rgb = [];
+            error('rppg:DecodedPtsMismatch','Decoded frame count or time differs from native MOV PTS.');
+        end
     catch problem
         cached.failure = string(problem.identifier);
         if strlength(cached.failure) == 0
@@ -226,6 +244,18 @@ if ~isKey(cache, key)
 else
     cached = cache(key);
 end
+end
+
+function expected = read_native_pts(path,interval)
+try
+    data = readtable(path,'Delimiter',',');
+    pts = data.pts_s;
+    assert(numel(pts) >= 2 && all(isfinite(pts)) && pts(1) == 0 && all(diff(pts) > 0) ...
+        && pts(end) >= interval(2) && isequal(data.frame_index,(1:height(data))'));
+catch
+    error('rppg:UnusablePtsSidecar','The native frame presentation table is incomplete or invalid.');
+end
+expected = pts(pts >= interval(1) & pts < interval(2));
 end
 
 function yes = is_research_control(candidate)
