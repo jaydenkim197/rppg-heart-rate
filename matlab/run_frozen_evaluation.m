@@ -141,7 +141,7 @@ if split == "final"
 else
     plan = selection_plan();
     raw.predictions = predictions;
-    score = score_selection_stage(raw,"tracking",plan);
+    score = score_selection_stage(raw,"tracking",plan,RankCandidates=false);
     report.independent = independent_checks(score,freeze,plan);
     writetable(predictions(string(predictions.method) ~= "POS",:),fullfile(output_dir,'predictions.csv'));
     writetable(report.independent,fullfile(output_dir,'independent_gates.csv'));

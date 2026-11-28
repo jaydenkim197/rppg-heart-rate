@@ -1,5 +1,11 @@
-function report = score_selection_stage(raw, stage, plan)
+function report = score_selection_stage(raw, stage, plan, options)
 %SCORE_SELECTION_STAGE Score whole-window errors and paired within-video changes.
+arguments
+    raw struct
+    stage
+    plan struct
+    options.RankCandidates (1,1) logical = true
+end
 prediction = raw.predictions;
 windows = plan.windows_s;
 main = prediction.start_s == windows(1,1) & prediction.end_s == windows(1,2);
@@ -57,19 +63,21 @@ for index = 1:height(roi)
 end
 report.metrics = roi;
 
-stage_index = find(plan.stages == stage,1);
-if isempty(stage_index)
-    error('rppg:UnknownSelectionStage', 'Use a pre-registered stage.');
-end
-criteria = table([plan.metrics;"trend_pair_rate_pct"], [plan.target;100], ...
-    [plan.unacceptable;0], [plan.weights(stage_index,:)';0], ...
-    [plan.gate;plan.min_paired_trend_rate_pct], ...
-    'VariableNames', {'metric','target','unacceptable','weight','gate'});
-report.ranking = rank_candidates(report, criteria, plan.min_paired_subjects, plan.tie_margin);
-if report.n_reference_subjects < plan.min_reference_subjects ...
-        || report.n_reference_trend_pairs < plan.min_reference_trend_pairs
-    report.ranking.state = "reference_gate_failed";
-    report.ranking.selected = "";
+if options.RankCandidates
+    stage_index = find(plan.stages == stage,1);
+    if isempty(stage_index)
+        error('rppg:UnknownSelectionStage', 'Use a pre-registered stage.');
+    end
+    criteria = table([plan.metrics;"trend_pair_rate_pct"], [plan.target;100], ...
+        [plan.unacceptable;0], [plan.weights(stage_index,:)';0], ...
+        [plan.gate;plan.min_paired_trend_rate_pct], ...
+        'VariableNames', {'metric','target','unacceptable','weight','gate'});
+    report.ranking = rank_candidates(report, criteria, plan.min_paired_subjects, plan.tie_margin);
+    if report.n_reference_subjects < plan.min_reference_subjects ...
+            || report.n_reference_trend_pairs < plan.min_reference_trend_pairs
+        report.ranking.state = "reference_gate_failed";
+        report.ranking.selected = "";
+    end
 end
 
 all_main = report.predictions;
