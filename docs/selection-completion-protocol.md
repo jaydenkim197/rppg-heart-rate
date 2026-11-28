@@ -16,6 +16,7 @@
 |---|---|
 | 피크 | 최대 bin → 포물선 → 4배 Zero Padding |
 | 색상 보정 | RGB Sum → Log → Temporal → Color Difference → HSV-Saturation |
+| POS 창 | 1.6초 → 1.0초 → 2.0초 → 3.0초 |
 | SQI | Energy Ratio → Kurtosis → Cross-correlation → Relative Peaks |
 | ROI Fusion | Equal → Consensus → Best → Weighted → Spectral |
 
